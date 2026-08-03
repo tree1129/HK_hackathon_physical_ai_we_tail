@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 
 from control.filters import CommandFilter
-from control.console_mode import ConsoleMode, ConsoleModeState, TrackingState
+from control.console_mode import ConsoleMode, ConsoleModeState, TrackingState, VisionSource
 from control.grasp_state import GraspState, GraspStateMachine, TargetObservation
 from control.hand_mapper import CHANNEL_ORDER, HandMapper
 from control.o6_controller import _resolve_can_id
@@ -22,6 +22,15 @@ CHANNELS = {
 
 
 class MapperAndFilterTest(unittest.TestCase):
+    def test_vision_source_switch_resets_active_controls(self):
+        state = ConsoleModeState()
+        state.switch(ConsoleMode.HAND_FOLLOW)
+        self.assertTrue(state.enable_follow(emergency_stopped=False))
+        state.switch_source(VisionSource.IPHONE_LIDAR)
+        self.assertEqual(state.vision_source, VisionSource.IPHONE_LIDAR)
+        self.assertEqual(state.mode, ConsoleMode.OBJECT_GRASP)
+        self.assertFalse(state.follow_enabled)
+
     def test_can_id_override_preserves_physical_hand_type(self):
         self.assertEqual(_resolve_can_id("right", None), 0x27)
         self.assertEqual(_resolve_can_id("left", None), 0x28)

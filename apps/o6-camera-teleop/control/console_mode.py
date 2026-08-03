@@ -9,6 +9,11 @@ class ConsoleMode(str, Enum):
     OBJECT_GRASP = "object-grasp"
 
 
+class VisionSource(str, Enum):
+    MAC_CAMERA = "mac-camera"
+    IPHONE_LIDAR = "iphone-lidar"
+
+
 class TrackingState(str, Enum):
     WAITING_HAND = "WAITING_HAND"
     TRACKING = "TRACKING"
@@ -19,12 +24,19 @@ class TrackingState(str, Enum):
 @dataclass
 class ConsoleModeState:
     mode: ConsoleMode = ConsoleMode.OBJECT_GRASP
+    vision_source: VisionSource = VisionSource.MAC_CAMERA
     follow_enabled: bool = False
     tracking_state: TrackingState = TrackingState.WAITING_HAND
     last_hand_time: float | None = None
 
     def switch(self, mode: ConsoleMode) -> None:
         self.mode = mode
+        self.pause_follow()
+
+    def switch_source(self, source: VisionSource) -> None:
+        self.vision_source = source
+        if source == VisionSource.IPHONE_LIDAR:
+            self.mode = ConsoleMode.OBJECT_GRASP
         self.pause_follow()
 
     def enable_follow(self, emergency_stopped: bool) -> bool:
