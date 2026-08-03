@@ -164,6 +164,7 @@ function updateStatus(status) {
   safetyDot.className = `status-dot ${safetyClass}`;
   setText("#safetyText", safetyText);
   setText("#commandCount", `${status.commands || 0} 条指令`);
+  setText("#channelTitle", handMode && !followEnabled ? "六维映射预览" : "O6 六维位置");
   setText("#backendValue", status.backend || "unknown");
   setText("#hardwareValue", status.connected ? "已连接" : "未连接");
   setText("#deviceValue", deviceHand === "left" ? "左手 / 0x28" : "右手 / 0x27");
