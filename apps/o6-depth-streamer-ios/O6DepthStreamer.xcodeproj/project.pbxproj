@@ -1,0 +1,459 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2CFF3CFB0A9CD3E65309B8E6 /* O6DepthStreamerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD1D81249DDD549FA71AE68 /* O6DepthStreamerApp.swift */; };
+		49367232C7FD9BF5972F8854 /* DepthStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EDD594CD206F1C5680347AC /* DepthStreamClient.swift */; };
+		8A17F260EDA421B361C32FFD /* DepthPacketEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B00CBCE4D47401010B0015 /* DepthPacketEncoder.swift */; };
+		9934E8F981A93B971F27DFA6 /* DepthFramePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30AA20DAC945773C3A04B1DF /* DepthFramePayload.swift */; };
+		AAE150389D0EF3F657F0836E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1553BBC71E565FAFDBDCA5E /* ContentView.swift */; };
+		DC82574210C061761EDD8FC8 /* ARDepthCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A475FAA4D056A811812766F /* ARDepthCapture.swift */; };
+		DDD3433FB13C53C099697D31 /* DepthPacketEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06303FFB130497F85DF8E387 /* DepthPacketEncoderTests.swift */; };
+		F3806686AA739F89FA1F13AE /* MacServiceBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D4BC8BF66C4B876315183B4 /* MacServiceBrowser.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3F53E171DD0CE9C8CDCB4F62 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C64402A884C7FEDB06944E9B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8057F29D0B05A4E9ECB4BF7B;
+			remoteInfo = O6DepthStreamer;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		06303FFB130497F85DF8E387 /* DepthPacketEncoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthPacketEncoderTests.swift; sourceTree = "<group>"; };
+		077C3D7A43B8A72497CF0727 /* O6DepthStreamer.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = O6DepthStreamer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A475FAA4D056A811812766F /* ARDepthCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARDepthCapture.swift; sourceTree = "<group>"; };
+		2D4BC8BF66C4B876315183B4 /* MacServiceBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacServiceBrowser.swift; sourceTree = "<group>"; };
+		30AA20DAC945773C3A04B1DF /* DepthFramePayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthFramePayload.swift; sourceTree = "<group>"; };
+		4EDD594CD206F1C5680347AC /* DepthStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthStreamClient.swift; sourceTree = "<group>"; };
+		501EE188A7F606CD651E375E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		9B6B925DF4EA92FC08729B74 /* O6DepthStreamerTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = O6DepthStreamerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1B00CBCE4D47401010B0015 /* DepthPacketEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthPacketEncoder.swift; sourceTree = "<group>"; };
+		E1553BBC71E565FAFDBDCA5E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		EFD1D81249DDD549FA71AE68 /* O6DepthStreamerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = O6DepthStreamerApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		48FE3A7C5B838B0C90983BD9 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				B1B00CBCE4D47401010B0015 /* DepthPacketEncoder.swift */,
+				4EDD594CD206F1C5680347AC /* DepthStreamClient.swift */,
+				2D4BC8BF66C4B876315183B4 /* MacServiceBrowser.swift */,
+			);
+			path = Network;
+			sourceTree = "<group>";
+		};
+		5954A1EC588A87B34A45C43D /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				30AA20DAC945773C3A04B1DF /* DepthFramePayload.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		6BEEEBD476111D609F3A373A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				077C3D7A43B8A72497CF0727 /* O6DepthStreamer.app */,
+				9B6B925DF4EA92FC08729B74 /* O6DepthStreamerTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		76373AA1286F71B15E9AB084 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				1A475FAA4D056A811812766F /* ARDepthCapture.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		AFCA61EFAB55A690408263A9 /* O6DepthStreamerTests */ = {
+			isa = PBXGroup;
+			children = (
+				06303FFB130497F85DF8E387 /* DepthPacketEncoderTests.swift */,
+			);
+			path = O6DepthStreamerTests;
+			sourceTree = "<group>";
+		};
+		B73E8049C421BD9381B85D1B /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				501EE188A7F606CD651E375E /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		BB1A453E81A953789B67A7B1 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E1553BBC71E565FAFDBDCA5E /* ContentView.swift */,
+				EFD1D81249DDD549FA71AE68 /* O6DepthStreamerApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		D1BFB3DA7F76AE6304907205 = {
+			isa = PBXGroup;
+			children = (
+				E55920E97BC4E911BD8C85B0 /* O6DepthStreamer */,
+				AFCA61EFAB55A690408263A9 /* O6DepthStreamerTests */,
+				6BEEEBD476111D609F3A373A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E55920E97BC4E911BD8C85B0 /* O6DepthStreamer */ = {
+			isa = PBXGroup;
+			children = (
+				BB1A453E81A953789B67A7B1 /* App */,
+				76373AA1286F71B15E9AB084 /* Capture */,
+				5954A1EC588A87B34A45C43D /* Models */,
+				48FE3A7C5B838B0C90983BD9 /* Network */,
+				B73E8049C421BD9381B85D1B /* Resources */,
+			);
+			path = O6DepthStreamer;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6BC94337C85B42F1669B82DB /* O6DepthStreamerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E227331D52AFB61CDB187D93 /* Build configuration list for PBXNativeTarget "O6DepthStreamerTests" */;
+			buildPhases = (
+				5D2265FF60A7C3F20887C0C0 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C5D2DB804A074F8198FEE90B /* PBXTargetDependency */,
+			);
+			name = O6DepthStreamerTests;
+			packageProductDependencies = (
+			);
+			productName = O6DepthStreamerTests;
+			productReference = 9B6B925DF4EA92FC08729B74 /* O6DepthStreamerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8057F29D0B05A4E9ECB4BF7B /* O6DepthStreamer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E03744ED99AE57D76BDF7BFD /* Build configuration list for PBXNativeTarget "O6DepthStreamer" */;
+			buildPhases = (
+				51310E0C9DC11AF23F753E0F /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = O6DepthStreamer;
+			packageProductDependencies = (
+			);
+			productName = O6DepthStreamer;
+			productReference = 077C3D7A43B8A72497CF0727 /* O6DepthStreamer.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C64402A884C7FEDB06944E9B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					6BC94337C85B42F1669B82DB = {
+						ProvisioningStyle = Automatic;
+					};
+					8057F29D0B05A4E9ECB4BF7B = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 4C8BED7B631C039575BDE377 /* Build configuration list for PBXProject "O6DepthStreamer" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D1BFB3DA7F76AE6304907205;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6BEEEBD476111D609F3A373A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8057F29D0B05A4E9ECB4BF7B /* O6DepthStreamer */,
+				6BC94337C85B42F1669B82DB /* O6DepthStreamerTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		51310E0C9DC11AF23F753E0F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DC82574210C061761EDD8FC8 /* ARDepthCapture.swift in Sources */,
+				AAE150389D0EF3F657F0836E /* ContentView.swift in Sources */,
+				9934E8F981A93B971F27DFA6 /* DepthFramePayload.swift in Sources */,
+				8A17F260EDA421B361C32FFD /* DepthPacketEncoder.swift in Sources */,
+				49367232C7FD9BF5972F8854 /* DepthStreamClient.swift in Sources */,
+				F3806686AA739F89FA1F13AE /* MacServiceBrowser.swift in Sources */,
+				2CFF3CFB0A9CD3E65309B8E6 /* O6DepthStreamerApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5D2265FF60A7C3F20887C0C0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DDD3433FB13C53C099697D31 /* DepthPacketEncoderTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C5D2DB804A074F8198FEE90B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8057F29D0B05A4E9ECB4BF7B /* O6DepthStreamer */;
+			targetProxy = 3F53E171DD0CE9C8CDCB4F62 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		27BEA2962F247EAE8B3B6306 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		27C0A9717FD1A32F9CC00EE8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = O6DepthStreamer/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.duamixu.tailhand.O6DepthStreamer;
+				PRODUCT_NAME = O6DepthStreamer;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		46005307157E1ED1D1307D77 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.duamixu.tailhand.O6DepthStreamerTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/O6DepthStreamer.app/O6DepthStreamer";
+			};
+			name = Release;
+		};
+		4F979F6A03B9BA3F177DFC85 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.duamixu.tailhand.O6DepthStreamerTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/O6DepthStreamer.app/O6DepthStreamer";
+			};
+			name = Debug;
+		};
+		6A45346579E9D7BD3237DC6E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = O6DepthStreamer/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.duamixu.tailhand.O6DepthStreamer;
+				PRODUCT_NAME = O6DepthStreamer;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		DE00DE4E4A3153697F3389D4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4C8BED7B631C039575BDE377 /* Build configuration list for PBXProject "O6DepthStreamer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DE00DE4E4A3153697F3389D4 /* Debug */,
+				27BEA2962F247EAE8B3B6306 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E03744ED99AE57D76BDF7BFD /* Build configuration list for PBXNativeTarget "O6DepthStreamer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				27C0A9717FD1A32F9CC00EE8 /* Debug */,
+				6A45346579E9D7BD3237DC6E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E227331D52AFB61CDB187D93 /* Build configuration list for PBXNativeTarget "O6DepthStreamerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4F979F6A03B9BA3F177DFC85 /* Debug */,
+				46005307157E1ED1D1307D77 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = C64402A884C7FEDB06944E9B /* Project object */;
+}
