@@ -22,6 +22,26 @@ CHANNELS = {
 
 
 class MapperAndFilterTest(unittest.TestCase):
+    def test_legacy_console_mode_state_positional_arguments_are_preserved(self):
+        state = ConsoleModeState(ConsoleMode.HAND_FOLLOW, True, TrackingState.TRACKING, 1.0)
+
+        self.assertEqual(state.mode, ConsoleMode.HAND_FOLLOW)
+        self.assertTrue(state.follow_enabled)
+        self.assertEqual(state.tracking_state, TrackingState.TRACKING)
+        self.assertEqual(state.last_hand_time, 1.0)
+        self.assertEqual(state.vision_source, VisionSource.MAC_CAMERA)
+
+    def test_mac_camera_source_switch_pauses_follow_without_changing_mode(self):
+        state = ConsoleModeState()
+        state.switch(ConsoleMode.HAND_FOLLOW)
+        self.assertTrue(state.enable_follow(emergency_stopped=False))
+
+        state.switch_source(VisionSource.MAC_CAMERA)
+
+        self.assertEqual(state.vision_source, VisionSource.MAC_CAMERA)
+        self.assertEqual(state.mode, ConsoleMode.HAND_FOLLOW)
+        self.assertFalse(state.follow_enabled)
+
     def test_vision_source_switch_resets_active_controls(self):
         state = ConsoleModeState()
         state.switch(ConsoleMode.HAND_FOLLOW)
