@@ -37,16 +37,41 @@
           </div>
         </div>
 
-        <div class="video-stage">
-          <img id="cameraFeed" src="/video_feed" alt="实时摄像头与视觉识别叠加画面">
-          <div class="video-state">
-            <span id="stateLabel" class="state-label">未布防</span>
-            <span id="targetLabel">目标：无</span>
-          </div>
-          <div id="cameraError" class="camera-error" hidden>
-            <strong>摄像头画面不可用</strong>
-            <span>检查 macOS 摄像头权限，或确认没有其他程序占用摄像头。</span>
-          </div>
+        <div id="streamGrid" class="stream-grid single-source">
+          <figure class="stream-figure">
+            <figcaption class="stream-caption">
+              <span>RGB 识别</span>
+              <strong id="rgbSourceLabel">Mac 摄像头</strong>
+            </figcaption>
+            <div class="video-stage">
+              <img id="cameraFeed" src="/video_feed" alt="实时摄像头与视觉识别叠加画面">
+              <div class="video-state">
+                <span id="stateLabel" class="state-label">未布防</span>
+                <span id="targetLabel">目标：无</span>
+              </div>
+              <div id="cameraError" class="camera-error" hidden>
+                <strong id="cameraErrorTitle">摄像头画面不可用</strong>
+                <span id="cameraErrorDetail">检查 macOS 摄像头权限，或确认没有其他程序占用摄像头。</span>
+              </div>
+            </div>
+          </figure>
+
+          <figure id="depthPanel" class="stream-figure depth-panel" hidden>
+            <figcaption class="stream-caption">
+              <span>深度伪彩</span>
+              <span class="depth-readout" aria-live="polite">
+                <strong id="depthDistance">---</strong>
+                <span id="depthPhase" class="depth-phase">等待深度</span>
+              </span>
+            </figcaption>
+            <div class="video-stage depth-stage">
+              <img id="depthFeed" src="/depth_feed" data-src="/depth_feed" alt="iPhone LiDAR 深度伪彩与采样区域">
+              <div id="depthError" class="camera-error" hidden>
+                <strong>深度画面不可用</strong>
+                <span>等待 iPhone LiDAR 数据流。</span>
+              </div>
+            </div>
+          </figure>
         </div>
 
         <div class="recognition-strip">
@@ -88,9 +113,22 @@
             <button id="followEnableButton" class="button primary" data-action="follow-enable" type="button">启用跟随</button>
             <button id="followPauseButton" class="button secondary" data-action="follow-pause" type="button">暂停跟随</button>
           </div>
-          <div id="objectActions" class="action-grid">
-            <button id="armButton" class="button primary" data-action="arm" type="button">布防识别</button>
-            <button id="disarmButton" class="button secondary" data-action="disarm" type="button">解除布防</button>
+          <div id="objectActions">
+            <div id="objectSourceControls" class="source-selector">
+              <span>视觉来源</span>
+              <div class="source-switch" role="group" aria-label="自动抓取视觉来源">
+                <button id="macSourceButton" class="source-button" data-action="source-mac-camera" type="button">Mac 摄像头</button>
+                <button id="iphoneSourceButton" class="source-button" data-action="source-iphone-lidar" type="button">iPhone LiDAR</button>
+              </div>
+            </div>
+            <div id="lidarActions" class="action-grid lidar-actions" hidden>
+              <button id="calibrateDepthButton" class="button secondary" data-action="depth-calibrate-contact" type="button">记录 0 cm</button>
+              <button id="clearDepthButton" class="button secondary" data-action="depth-clear-calibration" type="button">清除标定</button>
+            </div>
+            <div class="action-grid">
+              <button id="armButton" class="button primary" data-action="arm" type="button">布防识别</button>
+              <button id="disarmButton" class="button secondary" data-action="disarm" type="button">解除布防</button>
+            </div>
           </div>
           <div id="commonActions" class="action-grid common-actions">
             <button id="openButton" class="button open" data-action="open" type="button">安全张开</button>
@@ -119,6 +157,18 @@
             <div><dt>摄像头</dt><dd id="cameraValue">初始化中</dd></div>
             <div><dt id="diagnosticLabel">抓取目标</dt><dd id="diagnosticTarget">无</dd></div>
           </dl>
+          <div id="lidarDiagnostics" hidden>
+            <dl class="diagnostics lidar-diagnostics">
+              <div><dt>iPhone</dt><dd id="iphoneState">等待连接</dd></div>
+              <div><dt>设备</dt><dd id="iphoneDevice">---</dd></div>
+              <div><dt>配对码</dt><dd id="pairingCode" class="pairing-code">------</dd></div>
+              <div><dt>深度流</dt><dd id="depthStreamState">0.0 FPS / --- ms</dd></div>
+              <div><dt>有效深度</dt><dd id="depthValidRatio">0%</dd></div>
+              <div><dt>接触面</dt><dd id="contactDepth">未标定</dd></div>
+              <div><dt>有符号距离</dt><dd id="diagnosticDepthDistance">---</dd></div>
+              <div><dt>深度阶段</dt><dd id="diagnosticDepthPhase">等待深度</dd></div>
+            </dl>
+          </div>
           <p id="fallbackReason" class="fallback" hidden></p>
         </section>
       </aside>

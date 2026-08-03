@@ -18,10 +18,18 @@ const STATE_LABELS = {
   PAUSED_LOST: "丢手已停发",
 };
 
+const DEPTH_LABELS = {
+  DEPTH_UNAVAILABLE: "深度不可用",
+  OUTSIDE_OPEN_ZONE: "目标在 5 cm 外",
+  PREGRASP_OPEN: "预抓取 / 保持张开",
+  CONTACT_CONFIRMED: "接触面已确认",
+};
+
 const channelList = document.querySelector("#channelList");
 const toast = document.querySelector("#toast");
 let lastEvent = "";
 let toastTimer = null;
+let depthFeedActive = false;
 
 for (const [name, label] of Object.entries(CHANNEL_LABELS)) {
   const row = document.createElement("div");
@@ -46,6 +54,23 @@ function setText(selector, value) {
   document.querySelector(selector).textContent = value;
 }
 
+function finiteNumber(value) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function setDepthFeedActive(active) {
+  const feed = document.querySelector("#depthFeed");
+  const currentSource = feed.getAttribute("src");
+  if (active && currentSource !== feed.dataset.src) {
+    feed.src = feed.dataset.src;
+  } else if (!active && currentSource) {
+    feed.removeAttribute("src");
+  }
+  depthFeedActive = active;
+}
+
 function handLabel(handedness) {
   if (handedness === "Left") return "左手";
   if (handedness === "Right") return "右手";
@@ -62,6 +87,20 @@ function updateStatus(status) {
   const followEnabled = Boolean(status.follow_enabled);
   const trackingState = status.tracking_state || "WAITING_HAND";
   const deviceHand = status.hand_type || "left";
+  const lidarSource = status.vision_source === "iphone-lidar";
+  const showLidar = !handMode && lidarSource;
+  const iphoneConnected = Boolean(status.iphone_connected);
+  const depthCalibrated = Boolean(status.depth_calibrated);
+  const depthRatioValue = finiteNumber(status.depth_valid_ratio);
+  const depthValidRatio = Math.max(0, Math.min(1, depthRatioValue || 0));
+  const signedDistance = finiteNumber(status.signed_distance_mm);
+  const contactDepth = finiteNumber(status.contact_depth_mm);
+  const depthFps = finiteNumber(status.depth_fps);
+  const depthLatency = finiteNumber(status.depth_latency_ms);
+  const depthPhaseKey = typeof status.depth_phase === "string" ? status.depth_phase : "DEPTH_UNAVAILABLE";
+  const depthPhaseLabel = DEPTH_LABELS[depthPhaseKey] || "等待深度";
+  const hasTarget = Boolean(status.target && status.target !== "无");
+  const hasValidDepthTarget = iphoneConnected && depthValidRatio > 0 && hasTarget;
   const stateLabel = document.querySelector("#stateLabel");
   stateLabel.textContent = stopped ? "急停锁定" : (STATE_LABELS[state] || state);
   stateLabel.className = `state-label ${stopped ? "stopped" : state.toLowerCase()}`;
@@ -76,6 +115,38 @@ function updateStatus(status) {
   objectModeButton.disabled = stopped || !ready || !handMode;
   document.querySelector("#handActions").hidden = !handMode;
   document.querySelector("#objectActions").hidden = handMode;
+
+  const macSourceButton = document.querySelector("#macSourceButton");
+  const iphoneSourceButton = document.querySelector("#iphoneSourceButton");
+  macSourceButton.classList.toggle("selected", !lidarSource);
+  iphoneSourceButton.classList.toggle("selected", lidarSource);
+  macSourceButton.setAttribute("aria-pressed", String(!lidarSource));
+  iphoneSourceButton.setAttribute("aria-pressed", String(lidarSource));
+  macSourceButton.disabled = stopped || !ready || handMode || !lidarSource;
+  iphoneSourceButton.disabled = stopped || !ready || handMode || lidarSource;
+  document.querySelector("#lidarActions").hidden = !showLidar;
+  document.querySelector("#lidarDiagnostics").hidden = !showLidar;
+  document.querySelector("#depthPanel").hidden = !showLidar;
+  document.querySelector("#streamGrid").classList.toggle("single-source", !showLidar);
+  setDepthFeedActive(showLidar);
+
+  setText("#cameraTitle", handMode ? "手势识别" : (showLidar ? "iPhone 腕部视角" : "Mac 摄像头"));
+  setText("#rgbSourceLabel", showLidar ? "iPhone RGB" : "Mac 摄像头");
+  setText("#pairingCode", String(status.pairing_code || "------"));
+  setText("#iphoneState", iphoneConnected ? "已连接" : "等待连接");
+  setText("#iphoneDevice", status.iphone_device || "---");
+  setText(
+    "#depthStreamState",
+    `${Math.max(0, depthFps || 0).toFixed(1)} FPS / ${depthLatency == null ? "---" : `${Math.max(0, depthLatency).toFixed(0)} ms`}`,
+  );
+  setText("#depthValidRatio", `${Math.round(depthValidRatio * 100)}%`);
+  setText("#contactDepth", depthCalibrated && contactDepth != null ? `${contactDepth.toFixed(1)} mm` : "未标定");
+  const distanceText = signedDistance == null ? "---" : `${signedDistance >= 0 ? "+" : ""}${signedDistance.toFixed(1)} mm`;
+  setText("#depthDistance", distanceText);
+  setText("#diagnosticDepthDistance", distanceText);
+  setText("#depthPhase", depthPhaseLabel);
+  setText("#diagnosticDepthPhase", depthPhaseLabel);
+  document.querySelector("#depthPhase").className = `depth-phase ${depthPhaseKey.toLowerCase()}`;
 
   const leftHandButton = document.querySelector("#leftHandButton");
   const rightHandButton = document.querySelector("#rightHandButton");
@@ -133,6 +204,18 @@ function updateStatus(status) {
   if (stopped) {
     safetyText = "急停锁定，停止下发";
     safetyClass = "danger";
+  } else if (showLidar && !iphoneConnected && (state === "CLOSING" || state === "HOLDING")) {
+    safetyText = "深度断流，保持当前姿态";
+    safetyClass = "danger";
+  } else if (showLidar && !iphoneConnected) {
+    safetyText = "iPhone LiDAR 未连接";
+    safetyClass = "danger";
+  } else if (showLidar && !depthCalibrated) {
+    safetyText = "等待 0 cm 接触面标定";
+    safetyClass = "warning";
+  } else if (showLidar && depthPhaseKey === "DEPTH_UNAVAILABLE") {
+    safetyText = "深度不可用，禁止闭合";
+    safetyClass = "danger";
   } else if (!status.camera_ok) {
     safetyText = "摄像头不可用";
     safetyClass = "warning";
@@ -159,7 +242,16 @@ function updateStatus(status) {
   } else if (state === "HOLDING") {
     safetyText = "已保持抓取，等待张开";
   } else if (state === "ARMED") {
-    safetyText = "已布防，等待稳定目标";
+    if (showLidar && depthPhaseKey === "OUTSIDE_OPEN_ZONE") {
+      safetyText = "目标仍在 5 cm 外";
+    } else if (showLidar && depthPhaseKey === "PREGRASP_OPEN") {
+      safetyText = "目标接近，保持张开";
+      safetyClass = "warning";
+    } else if (showLidar && depthPhaseKey === "CONTACT_CONFIRMED") {
+      safetyText = "接触面已确认，等待稳定计数";
+    } else {
+      safetyText = "已布防，等待稳定目标";
+    }
   }
   safetyDot.className = `status-dot ${safetyClass}`;
   setText("#safetyText", safetyText);
@@ -168,14 +260,22 @@ function updateStatus(status) {
   setText("#backendValue", status.backend || "unknown");
   setText("#hardwareValue", status.connected ? "已连接" : "未连接");
   setText("#deviceValue", deviceHand === "left" ? "左手 / 0x28" : "右手 / 0x27");
-  setText("#cameraValue", status.camera_ok ? "正常" : "不可用");
+  setText("#cameraValue", status.camera_ok ? (showLidar ? "iPhone RGB 正常" : "正常") : "不可用");
   setText("#eventMessage", status.last_event || "等待事件");
 
   const fallback = document.querySelector("#fallbackReason");
   const reason = status.fallback_reason || status.last_error;
   fallback.hidden = !reason;
   fallback.textContent = reason ? `诊断：${reason}` : "";
+  setText("#cameraErrorTitle", showLidar ? "iPhone RGB 画面不可用" : "摄像头画面不可用");
+  setText(
+    "#cameraErrorDetail",
+    showLidar
+      ? "等待 iPhone RGB 数据流。"
+      : "检查 macOS 摄像头权限，或确认没有其他程序占用摄像头。",
+  );
   document.querySelector("#cameraError").hidden = Boolean(status.camera_ok);
+  document.querySelector("#depthError").hidden = !showLidar || (iphoneConnected && (depthFps || 0) > 0);
 
   const pose = Array.isArray(status.pose) ? status.pose : [];
   const channels = Array.isArray(status.channels) ? status.channels : Object.keys(CHANNEL_LABELS);
@@ -189,7 +289,12 @@ function updateStatus(status) {
 
   document.querySelector("#followEnableButton").disabled = stopped || !handMode || followEnabled || !ready;
   document.querySelector("#followPauseButton").disabled = stopped || !handMode || !followEnabled || !ready;
-  document.querySelector("#armButton").disabled = stopped || handMode || state !== "DISARMED" || !ready;
+  document.querySelector("#calibrateDepthButton").disabled = stopped || !showLidar || !ready
+    || state !== "DISARMED" || !hasValidDepthTarget;
+  document.querySelector("#clearDepthButton").disabled = stopped || !showLidar || !ready
+    || state !== "DISARMED" || !depthCalibrated;
+  document.querySelector("#armButton").disabled = stopped || handMode || state !== "DISARMED" || !ready
+    || (showLidar && (!iphoneConnected || !depthCalibrated));
   document.querySelector("#disarmButton").disabled = stopped || handMode || state !== "ARMED" || !ready;
   document.querySelector("#openButton").disabled = !ready;
   document.querySelector("#stopButton").disabled = stopped || !ready;
@@ -237,6 +342,14 @@ document.querySelectorAll("[data-action]").forEach((button) => {
 
 document.querySelector("#cameraFeed").addEventListener("error", () => {
   document.querySelector("#cameraError").hidden = false;
+});
+
+document.querySelector("#depthFeed").addEventListener("load", () => {
+  document.querySelector("#depthError").hidden = true;
+});
+
+document.querySelector("#depthFeed").addEventListener("error", () => {
+  if (depthFeedActive) document.querySelector("#depthError").hidden = false;
 });
 
 refreshStatus();
