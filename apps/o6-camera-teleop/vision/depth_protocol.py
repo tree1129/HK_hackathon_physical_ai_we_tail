@@ -95,7 +95,15 @@ def parse_depth_frame(
 
     rgb_end = header_end + rgb_length
     depth_end = rgb_end + depth_length
-    rgb_bgr = cv2.imdecode(np.frombuffer(payload[header_end:rgb_end], dtype=np.uint8), cv2.IMREAD_COLOR)
+    if rgb_length == 0:
+        raise DepthProtocolError("invalid JPEG image")
+    try:
+        rgb_bgr = cv2.imdecode(
+            np.frombuffer(payload[header_end:rgb_end], dtype=np.uint8),
+            cv2.IMREAD_COLOR,
+        )
+    except cv2.error:
+        raise DepthProtocolError("invalid JPEG image") from None
     if rgb_bgr is None:
         raise DepthProtocolError("invalid JPEG image")
     if rgb_bgr.shape != (rgb_height, rgb_width, 3):

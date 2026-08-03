@@ -113,6 +113,11 @@ class DepthProtocolTest(unittest.TestCase):
         header_bytes = json.dumps(header).encode()
         invalid_jpeg = struct.pack(">I", len(header_bytes)) + header_bytes + b"nope" + payload[4 + header_length + original_rgb_length:]
         self.assert_rejected(invalid_jpeg, "JPEG")
+
+        header["rgb_length"] = 0
+        header_bytes = json.dumps(header).encode()
+        empty_jpeg = struct.pack(">I", len(header_bytes)) + header_bytes + payload[4 + header_length + original_rgb_length:]
+        self.assert_rejected(empty_jpeg, "invalid JPEG")
         self.assert_rejected(make_fixture(header_updates={"rgb_width": 3}), "dimensions")
 
     def test_rejects_invalid_matrix_metadata(self):
