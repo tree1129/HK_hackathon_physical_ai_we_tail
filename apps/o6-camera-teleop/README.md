@@ -67,6 +67,60 @@ code .
 
 网页服务器只绑定 `127.0.0.1`，局域网其他设备默认不能访问。关闭网页不会结束机器人进程；回到启动它的 Terminal 按 `Ctrl-C` 才会安全停止，真机连接正常且未急停时会先发送安全张开。
 
+## iPhone 17 Pro LiDAR 近距离抓取
+
+该链路把固定在机械腕部的 iPhone 17 Pro 作为 RGB-D 传感器：iPhone 采集彩色画面和 LiDAR 深度，Mac 统一完成目标识别、距离判断、安全门禁与 O6 指令下发。网页仍只在 Mac 本机 `http://127.0.0.1:8765` 打开；iPhone 只连接 Mac 的 WebSocket `8766` 端口，不能访问控制接口，也不能直接控制 O6。
+
+本版本只控制 **O6 六个手指通道**，不会控制机械臂、手腕或让 O6 主动靠近物体。物体与 O6 的接近必须由人或另外的机械臂控制系统完成。
+
+### 首次安装 iPhone 应用
+
+需要 Xcode、XcodeGen、iPhone 17 Pro 与 Mac 处于同一 Wi-Fi。先在 Mac Terminal 执行：
+
+```bash
+brew install xcodegen
+cd tailhand/apps/o6-depth-streamer-ios
+xcodegen generate
+open O6DepthStreamer.xcodeproj
+```
+
+在 Xcode 中选择 `O6DepthStreamer` target，在 `Signing & Capabilities` 勾选自动签名并选择自己的 Personal Team。用数据线连接名为 `Duami` 的 iPhone 17 Pro，在顶部运行目标中选择该真机；若系统提示，先信任 Mac 并在 iPhone 的“设置 > 隐私与安全性 > 开发者模式”开启开发者模式。点击 Run 安装。首次启动时必须允许“相机”和“本地网络”权限。
+
+更完整的 Xcode、签名和真机排障见 [iOS 采集端 README](../o6-depth-streamer-ios/README.md)。
+
+### 完整操作顺序
+
+1. 固定 iPhone，使后置 LiDAR 与 O6 一起运动且画面同时覆盖手背、指尖接触区域和目标物。固定后不要再改变相机与 O6 的相对位置。
+2. 在 Mac 运行 `./run_web.sh --dry-run`，浏览器打开 `http://127.0.0.1:8765`。macOS 防火墙询问时允许 Python 或 Terminal 接收入站连接；网页端口 `8765` 无需对局域网开放，传感器端口 `8766` 必须允许同一 Wi-Fi 的 iPhone 访问。
+3. 网页选择 `物品抓取`，输入源选择 `iPhone LiDAR`。确认页面显示六位临时配对码。每次重启 Mac 运行器都会生成新码。
+4. 打开 iPhone 的 `O6 Depth Streamer`，选择自动发现的 Mac，输入网页六位码并点 `连接`。自动发现失败时切换“手动输入 Mac 地址”，填写 Mac 当前 Wi-Fi IP，端口保持 `8766`。
+5. 等待 iPhone 显示“正在传输”，网页同时出现非空 RGB、深度伪彩图、设备名、FPS、延迟和有效深度比例。断流超过 `500 ms` 会在网页明确显示并禁止尚未发生的抓握。
+6. 把一个平面目标准确放在希望定义为指尖接触的 `0 cm` 位置，保持 O6 张开且画面稳定，点击网页 `记录 0 cm`。程序采集 15 个有效样本并将接触深度原子写入 `config.yaml > iphone_lidar > contact_depth_mm`。相机安装位置改变后必须清除并重新标定。
+7. 移开标定平面，确认有符号距离为正。点击 `布防识别` 后，系统才允许自动抓握；连接或配对本身不会产生动作。
+8. 让 O6 与物体逐步接近。距离大于 `+50 mm` 显示 `范围外`；`0 < 距离 <= +50 mm` 显示 `预抓取张开` 并维持安全张开；距离 `<= 0 mm` 连续稳定 8 帧后显示 `接触确认`，状态机才进入闭合。抓握到 `HOLDING` 后不会因断流或目标移开自动松开。
+9. 点击 `安全张开` 明确释放并解除布防。点击 `紧急停止` 会锁存并停止后续软件指令，但它不是经过安全认证的硬件急停，也不会保证主动张开；真机旁必须保留可立即物理断电的手段。急停后需重启运行器才能恢复动作。
+
+先全程使用 `--dry-run` 验证视频、标定、距离方向与阶段变化。只有确认正距离表示尚未接触、负距离表示越过标定平面，并且人在夹持区外，才停止 dry-run 后运行：
+
+```bash
+./run_web.sh --real
+```
+
+正常退出请回到 Mac Terminal 按 `Ctrl-C`；真机已连接且未急停时，运行器会先发送安全张开再释放设备。
+
+### 不连接 iPhone 的合成深度验收
+
+Mac dry-run 控制台启动后，从网页读取配对码。假设 `config.yaml` 中 `contact_depth_mm: 500`，在另一个 Terminal 依次执行以下命令；每次发送时不要让 iPhone 同时连接，因为接收器只允许一个数据源：
+
+```bash
+cd tailhand/apps/o6-camera-teleop
+.venv/bin/python tools/send_depth_fixture.py --pairing-code 123456 --depth-mm 600 --frames 180 --lead-blank-frames 90 --fps 15
+.venv/bin/python tools/send_depth_fixture.py --pairing-code 123456 --depth-mm 540 --frames 180 --lead-blank-frames 90 --fps 15
+.venv/bin/python tools/send_depth_fixture.py --pairing-code 123456 --depth-mm 495 --frames 180 --lead-blank-frames 90 --fps 15
+```
+
+把示例中的 `123456` 替换为网页当次显示的配对码。每条命令的前 90 帧是空白背景；网页显示已连接后，在这约 6 秒内点击 `布防识别`，随后高对比度矩形进入抓取区。每条命令结束后深度流过期会自动解除布防，下一条命令需要重新布防。三个输入对应有符号距离 `+100 mm`、`+40 mm`、`-5 mm`；预期阶段依次为 `范围外`、`预抓取张开`、以及稳定 8 帧后的 `接触确认 / CLOSING`。合成发送器只产生测试画面和均匀深度，不连接 O6；是否下发真机仍由运行器的 `--dry-run/--real` 决定。
+
 先看识别和映射，不碰硬件：
 
 ```bash
@@ -295,3 +349,7 @@ MediaPipe、OpenCV 摄像头和 dry-run 可用。官方 O6 CAN 源码优先使�
 一直显示 `HAND IN ZONE - BLOCKED`：把放置物品的手完整移出绿色框。这个门禁用于避免夹手，不应通过降低手部检测阈值绕过。
 
 网页显示摄像头不可用：确认 `./run_web.sh` 所在 Terminal/Codex 已获“系统设置 > 隐私与安全性 > 相机”权限，并关闭正在占用 Mac 摄像头的 OpenCV 窗口、FaceTime 或会议软件。一个摄像头通常不能同时被两个本项目进程占用。
+
+iPhone 一直未连接：确认网页输入源已切到 `iPhone LiDAR`、两台设备位于同一 Wi-Fi、本地网络权限已开启，并允许防火墙接收 `8766`。Bonjour 发现失败时在 iPhone 手动填写 Mac Wi-Fi IP 和端口 `8766`；不要填写网页端口 `8765`。
+
+LiDAR 有 RGB 但深度不可用：检查支架是否遮挡 LiDAR，并避开透明、镜面、过近物体。有效深度比例低于配置阈值时系统会禁止闭合，不会用单目画面伪造厘米距离。
