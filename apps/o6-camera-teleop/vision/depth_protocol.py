@@ -4,12 +4,16 @@ from dataclasses import dataclass
 import json
 import math
 import struct
+from typing import Union
 
 import cv2
 import numpy as np
 
 
 PROTOCOL_VERSION = 1
+MAX_RGB_WIDTH = 1920
+MAX_RGB_HEIGHT = 1080
+MAX_RGB_PIXELS = 2_073_600
 
 
 class DepthProtocolError(ValueError):
@@ -57,7 +61,7 @@ def parse_depth_frame(
     header_end = 4 + header_length
     try:
         header = json.loads(payload[4:header_end].decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         raise DepthProtocolError("invalid JSON header") from None
     if not isinstance(header, dict):
         raise DepthProtocolError("header must be an object")
@@ -65,13 +69,23 @@ def parse_depth_frame(
     for field in _REQUIRED_FIELDS:
         if field not in header:
             raise DepthProtocolError(f"missing required field: {field}")
-    if isinstance(header["protocol_version"], bool) or header["protocol_version"] != PROTOCOL_VERSION:
+    if (
+        isinstance(header["protocol_version"], bool)
+        or not isinstance(header["protocol_version"], int)
+        or header["protocol_version"] != PROTOCOL_VERSION
+    ):
         raise DepthProtocolError("unsupported protocol version")
 
     sequence = _non_negative_integer(header["sequence"], "sequence")
     timestamp_ns = _non_negative_integer(header["timestamp_ns"], "timestamp_ns")
     rgb_width = _positive_integer(header["rgb_width"], "RGB dimensions")
     rgb_height = _positive_integer(header["rgb_height"], "RGB dimensions")
+    if (
+        rgb_width > MAX_RGB_WIDTH
+        or rgb_height > MAX_RGB_HEIGHT
+        or rgb_width * rgb_height > MAX_RGB_PIXELS
+    ):
+        raise DepthProtocolError("RGB dimensions exceed limits")
     depth_width = _positive_integer(header["depth_width"], "depth dimensions")
     depth_height = _positive_integer(header["depth_height"], "depth dimensions")
     rgb_length = _non_negative_integer(header["rgb_length"], "RGB length")
@@ -97,9 +111,13 @@ def parse_depth_frame(
     depth_end = rgb_end + depth_length
     if rgb_length == 0:
         raise DepthProtocolError("invalid JPEG image")
+    jpeg = memoryview(payload)[header_end:rgb_end]
+    jpeg_width, jpeg_height = _jpeg_dimensions(jpeg)
+    if (jpeg_width, jpeg_height) != (rgb_width, rgb_height):
+        raise DepthProtocolError("JPEG dimensions do not match header")
     try:
         rgb_bgr = cv2.imdecode(
-            np.frombuffer(payload[header_end:rgb_end], dtype=np.uint8),
+            np.frombuffer(jpeg, dtype=np.uint8),
             cv2.IMREAD_COLOR,
         )
     except cv2.error:
@@ -111,13 +129,16 @@ def parse_depth_frame(
 
     depth_mm = np.frombuffer(payload[rgb_end:depth_end], dtype="<u2").reshape(depth_height, depth_width).copy()
     confidence = np.frombuffer(payload[depth_end:], dtype=np.uint8).reshape(depth_height, depth_width).copy()
+    rgb_bgr.setflags(write=False)
+    depth_mm.setflags(write=False)
+    confidence.setflags(write=False)
     return DepthFrame(
         sequence=sequence,
         timestamp_ns=timestamp_ns,
         received_monotonic=received_monotonic,
         device_name=device_name,
         orientation=orientation,
-        rgb_bgr=rgb_bgr.copy(),
+        rgb_bgr=rgb_bgr,
         depth_mm=depth_mm,
         confidence=confidence,
         intrinsics=(intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3]),
@@ -141,6 +162,8 @@ def _positive_integer(value: object, field: str) -> int:
 def _matrix(value: object, length: int, field: str) -> tuple[float, ...]:
     if not isinstance(value, list) or len(value) != length:
         raise DepthProtocolError(f"invalid {field}")
+    if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in value):
+        raise DepthProtocolError(f"invalid {field}")
     try:
         matrix = tuple(float(item) for item in value)
     except (TypeError, ValueError, OverflowError):
@@ -154,3 +177,51 @@ def _string(value: object, field: str) -> str:
     if not isinstance(value, str):
         raise DepthProtocolError(f"invalid {field}")
     return value
+
+
+def _jpeg_dimensions(jpeg: Union[memoryview, bytes]) -> tuple[int, int]:
+    """Read a JPEG start-of-frame marker without decoding pixel data."""
+    if len(jpeg) < 4 or jpeg[0] != 0xFF or jpeg[1] != 0xD8:
+        raise DepthProtocolError("invalid JPEG image")
+
+    position = 2
+    while position < len(jpeg):
+        if jpeg[position] != 0xFF:
+            raise DepthProtocolError("invalid JPEG image")
+        while position < len(jpeg) and jpeg[position] == 0xFF:
+            position += 1
+        if position >= len(jpeg):
+            raise DepthProtocolError("invalid JPEG image")
+        marker = jpeg[position]
+        position += 1
+        if marker == 0x00 or marker == 0xD9 or marker == 0xDA:
+            raise DepthProtocolError("invalid JPEG image")
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            continue
+        if position + 2 > len(jpeg):
+            raise DepthProtocolError("invalid JPEG image")
+        segment_length = (jpeg[position] << 8) | jpeg[position + 1]
+        if segment_length < 2 or position + segment_length > len(jpeg):
+            raise DepthProtocolError("invalid JPEG image")
+        if marker in _SOF_MARKERS:
+            if segment_length < 8:
+                raise DepthProtocolError("invalid JPEG image")
+            height = (jpeg[position + 3] << 8) | jpeg[position + 4]
+            width = (jpeg[position + 5] << 8) | jpeg[position + 6]
+            components = jpeg[position + 7]
+            if (
+                width == 0
+                or height == 0
+                or components == 0
+                or segment_length != 8 + 3 * components
+            ):
+                raise DepthProtocolError("invalid JPEG image")
+            return width, height
+        position += segment_length
+    raise DepthProtocolError("invalid JPEG image")
+
+
+_SOF_MARKERS = frozenset((
+    0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+    0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
+))

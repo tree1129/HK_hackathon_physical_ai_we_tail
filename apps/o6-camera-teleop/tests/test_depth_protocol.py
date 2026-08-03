@@ -72,16 +72,36 @@ class DepthProtocolTest(unittest.TestCase):
         frame = self.parse(make_fixture())
         self.assertEqual((frame.sequence, frame.timestamp_ns, frame.received_monotonic), (7, 123456, 42.5))
         self.assertEqual((frame.device_name, frame.orientation), ("Duami", "landscapeRight"))
+        self.assertEqual(frame.intrinsics, (1.0, 2.0, 3.0, 4.0))
+        self.assertEqual(frame.rgb_to_depth, (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0))
+        self.assertEqual(
+            frame.camera_transform,
+            (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+        )
         np.testing.assert_array_equal(frame.depth_mm, [[500, 501], [502, 503]])
         np.testing.assert_array_equal(frame.confidence, [[1, 2], [3, 4]])
         self.assertEqual(frame.rgb_bgr.shape, (2, 2, 3))
+        self.assertEqual(frame.rgb_bgr.dtype, np.uint8)
+        self.assertEqual(frame.depth_mm.dtype, np.uint16)
+        self.assertEqual(frame.confidence.dtype, np.uint8)
         self.assertTrue(frame.rgb_bgr.flags["OWNDATA"])
         self.assertTrue(frame.depth_mm.flags["OWNDATA"])
         self.assertTrue(frame.confidence.flags["OWNDATA"])
+        with self.assertRaises(ValueError):
+            frame.rgb_bgr[0, 0, 0] = 0
+        with self.assertRaises(ValueError):
+            frame.depth_mm[0, 0] = 0
+        with self.assertRaises(ValueError):
+            frame.confidence[0, 0] = 0
 
     def test_rejects_truncated_header_and_body(self):
         self.assert_rejected(b"\x00\x00\x00\x02{", "header")
         self.assert_rejected(make_fixture(truncate=1), "body")
+
+    def test_rejects_deeply_nested_json_header(self):
+        nested_json = ("[" * 1_100 + "0" + "]" * 1_100).encode("utf-8")
+        self.assert_rejected(struct.pack(">I", len(nested_json)) + nested_json, "invalid JSON header")
 
     def test_rejects_oversize_message(self):
         payload = make_fixture()
@@ -91,6 +111,7 @@ class DepthProtocolTest(unittest.TestCase):
     def test_rejects_unsupported_version_and_missing_field(self):
         self.assert_rejected(make_fixture(header_updates={"protocol_version": 2}), "unsupported")
         self.assert_rejected(make_fixture(header_updates={"protocol_version": True}), "unsupported")
+        self.assert_rejected(make_fixture(header_updates={"protocol_version": 1.0}), "unsupported")
         payload = make_fixture()
         header_length = struct.unpack_from(">I", payload, 0)[0]
         header = json.loads(payload[4:4 + header_length])
@@ -101,6 +122,8 @@ class DepthProtocolTest(unittest.TestCase):
 
     def test_rejects_invalid_dimensions_and_length_mismatch(self):
         self.assert_rejected(make_fixture(header_updates={"rgb_width": 0}), "dimensions")
+        self.assert_rejected(make_fixture(header_updates={"rgb_width": 1921}), "RGB dimensions")
+        self.assert_rejected(make_fixture(header_updates={"rgb_height": 1081}), "RGB dimensions")
         self.assert_rejected(make_fixture(header_updates={"depth_length": 7}), "depth length")
         self.assert_rejected(make_fixture(header_updates={"rgb_length": 1}), "body length")
 
@@ -118,12 +141,14 @@ class DepthProtocolTest(unittest.TestCase):
         header_bytes = json.dumps(header).encode()
         empty_jpeg = struct.pack(">I", len(header_bytes)) + header_bytes + payload[4 + header_length + original_rgb_length:]
         self.assert_rejected(empty_jpeg, "invalid JPEG")
-        self.assert_rejected(make_fixture(header_updates={"rgb_width": 3}), "dimensions")
+        self.assert_rejected(make_fixture(header_updates={"rgb_width": 3}), "JPEG dimensions")
 
     def test_rejects_invalid_matrix_metadata(self):
         self.assert_rejected(make_fixture(header_updates={"intrinsics": [1.0] * 3}), "intrinsics")
         self.assert_rejected(make_fixture(header_updates={"rgb_to_depth": [math.inf] * 9}), "rgb_to_depth")
         self.assert_rejected(make_fixture(header_updates={"camera_transform": [1.0] * 15}), "camera_transform")
+        self.assert_rejected(make_fixture(header_updates={"intrinsics": ["1"] * 4}), "intrinsics")
+        self.assert_rejected(make_fixture(header_updates={"rgb_to_depth": [True] * 9}), "rgb_to_depth")
 
     def test_rejects_invalid_sequence_and_timestamp(self):
         self.assert_rejected(make_fixture(header_updates={"sequence": True}), "sequence")
