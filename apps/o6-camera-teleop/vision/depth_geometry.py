@@ -58,7 +58,7 @@ def measure_depth(
     if start_x >= end_x or start_y >= end_y:
         raise ValueError("mapped depth ROI is empty")
 
-    roi = (start_x, start_y, end_x - start_x, end_y - start_y)
+    roi = (start_x, start_y, end_x, end_y)
     depth_values = depth[start_y:end_y, start_x:end_x]
     confidence_values = confidence_array[start_y:end_y, start_x:end_x]
     valid = (
@@ -92,7 +92,7 @@ class ContactCalibrator:
         self._samples.append(depth)
         if len(self._samples) < self.required_samples:
             return None
-        result = _robust_median(np.asarray(self._samples[-self.required_samples:]))
+        result = float(np.median(self._samples[-self.required_samples:]))
         self.reset()
         return result
 

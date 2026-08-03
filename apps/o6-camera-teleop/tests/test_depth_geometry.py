@@ -7,7 +7,7 @@ from vision.depth_geometry import ContactCalibrator, measure_depth
 
 
 class DepthGeometryTest(unittest.TestCase):
-    def test_maps_inner_rgb_box_to_scale_independent_depth_roi(self):
+    def test_maps_inner_rgb_box_to_absolute_scale_independent_depth_roi(self):
         result = measure_depth(
             np.full((20, 40), 600, dtype=np.uint16),
             np.full((20, 40), 2, dtype=np.uint8),
@@ -19,7 +19,7 @@ class DepthGeometryTest(unittest.TestCase):
             contact_depth_mm=None,
         )
 
-        self.assertEqual(result.depth_roi, (12, 5, 8, 5))
+        self.assertEqual(result.depth_roi, (12, 5, 20, 10))
         self.assertEqual(result.target_depth_mm, 600.0)
 
     def test_rejects_large_depth_outlier_and_reports_positive_distance(self):
@@ -90,6 +90,13 @@ class DepthGeometryTest(unittest.TestCase):
         self.assertIsNone(calibrator.add(100))
         self.assertIsNone(calibrator.add(300))
         self.assertEqual(calibrator.add(200), 200.0)
+
+    def test_calibrator_uses_plain_median_for_batch_with_outlier(self):
+        calibrator = ContactCalibrator(required_samples=5)
+        for sample in (500, 501, 502, 503):
+            self.assertIsNone(calibrator.add(sample))
+
+        self.assertEqual(calibrator.add(5000), 502.0)
 
     def test_calibrator_validates_configuration_and_samples(self):
         with self.assertRaises(ValueError):
