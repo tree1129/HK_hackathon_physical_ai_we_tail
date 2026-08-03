@@ -507,7 +507,7 @@ class WebConsoleRuntime:
                 if action == "source-mac-camera"
                 else VisionSource.IPHONE_LIDAR
             )
-            controller.send_safe_open(safe_open)
+            controller.move(safe_open)
             hand_filter.reset(safe_open)
             grasp_filter.reset(safe_open)
             machine.reset_after_open()
@@ -563,7 +563,7 @@ class WebConsoleRuntime:
             return None
 
         if action in ("mode-hand", "mode-object"):
-            controller.send_safe_open(safe_open)
+            controller.move(safe_open)
             hand_filter.reset(safe_open)
             grasp_filter.reset(safe_open)
             machine.reset_after_open()
@@ -612,7 +612,6 @@ class WebConsoleRuntime:
                 and (
                     self.depth_receiver is None
                     or not self.depth_receiver.status().connected
-                    or self._latest_target_depth_mm is None
                     or self.config["iphone_lidar"].get("contact_depth_mm") is None
                 )
             ):
