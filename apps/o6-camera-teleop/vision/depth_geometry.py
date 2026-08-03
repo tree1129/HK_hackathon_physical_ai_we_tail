@@ -148,17 +148,16 @@ def _positive_pair(value, name: str) -> tuple[float, float]:
 def _box(value) -> tuple[float, float, float, float]:
     if not isinstance(value, (tuple, list)) or len(value) != 4:
         raise ValueError("rgb_box must contain x, y, width, and height")
-    x = _finite_number_or_none(value[0], "rgb_box x")
-    y = _finite_number_or_none(value[1], "rgb_box y")
+    x = _required_finite_number(value[0], "rgb_box x")
+    y = _required_finite_number(value[1], "rgb_box y")
     width = _positive_number(value[2], "rgb_box width")
     height = _positive_number(value[3], "rgb_box height")
-    assert x is not None and y is not None
     return x, y, width, height
 
 
 def _positive_number(value, name: str) -> float:
-    number = _finite_number_or_none(value, name)
-    if number is None or number <= 0:
+    number = _required_finite_number(value, name)
+    if number <= 0:
         raise ValueError(f"{name} must be positive")
     return number
 
@@ -166,9 +165,19 @@ def _positive_number(value, name: str) -> float:
 def _finite_number_or_none(value, name: str) -> float | None:
     if value is None:
         return None
-    if not isinstance(value, Real) or isinstance(value, bool) or not math.isfinite(float(value)):
+    return _required_finite_number(value, name)
+
+
+def _required_finite_number(value, name: str) -> float:
+    if not isinstance(value, Real) or isinstance(value, bool):
         raise ValueError(f"{name} must be a finite number")
-    return float(value)
+    try:
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError(f"{name} must be a finite number") from None
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be a finite number")
+    return number
 
 
 def _robust_median(values: np.ndarray) -> float:

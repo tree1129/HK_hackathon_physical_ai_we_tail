@@ -133,6 +133,8 @@ class DepthGeometryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             measure_depth(depth, confidence, **{**common, "rgb_box": (30, 0, 10, 10)})
         with self.assertRaises(ValueError):
+            measure_depth(depth, confidence, **{**common, "rgb_box": (None, 0, 10, 10)})
+        with self.assertRaises(ValueError):
             measure_depth(depth, confidence, **{**common, "rgb_box": (math.inf, 0, 10, 10)})
         with self.assertRaises(ValueError):
             measure_depth(depth, confidence, **{**common, "rgb_size": (math.inf, 20)})
@@ -140,6 +142,11 @@ class DepthGeometryTest(unittest.TestCase):
             measure_depth(
                 depth, confidence,
                 **{**common, "rgb_box": (np.finfo(float).max, 0, 1, 1), "rgb_size": (1, 1)},
+            )
+        with self.assertRaises(ValueError):
+            measure_depth(
+                depth, confidence,
+                **{**common, "rgb_box": (10 ** 10_000, 0, 1, 1), "rgb_size": (1, 1)},
             )
 
     def test_rejects_non_real_or_object_array_dtypes(self):
@@ -195,6 +202,8 @@ class DepthGeometryTest(unittest.TestCase):
             calibrator.add(math.nan)
         with self.assertRaises(ValueError):
             calibrator.add(math.inf)
+        with self.assertRaises(ValueError):
+            calibrator.add(10 ** 10_000)
 
     def test_consumes_read_only_depth_frame_arrays_without_mutation(self):
         depth = np.full((2, 2), 550, dtype=np.uint16)
