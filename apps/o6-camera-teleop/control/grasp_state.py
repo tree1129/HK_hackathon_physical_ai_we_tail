@@ -59,7 +59,9 @@ class GraspStateMachine:
             self.stable_count = 0
             self.target = None
 
-    def update(self, observation: TargetObservation | None) -> GraspState:
+    def update(
+        self, observation: TargetObservation | None, *, allow_close: bool = True
+    ) -> GraspState:
         if self.state != GraspState.ARMED:
             return self.state
         if observation is None or not self._eligible(observation):
@@ -78,7 +80,7 @@ class GraspStateMachine:
         )
         self.stable_count = self.stable_count + 1 if same_target else 1
         self.target = observation
-        if self.stable_count >= self.stable_frames:
+        if allow_close and self.stable_count >= self.stable_frames:
             self.state = GraspState.CLOSING
         return self.state
 

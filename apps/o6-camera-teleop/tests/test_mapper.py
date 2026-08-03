@@ -131,6 +131,22 @@ class MapperAndFilterTest(unittest.TestCase):
         machine.reset_after_open()
         self.assertEqual(machine.state, GraspState.DISARMED)
 
+    def test_object_grasp_accumulates_stability_while_depth_close_is_blocked(self):
+        machine = GraspStateMachine(
+            grasp_zone=(0.3, 0.2, 0.7, 0.8),
+            min_area_ratio=0.01,
+            max_area_ratio=0.4,
+            stable_frames=3,
+            center_tolerance=0.08,
+            auto_arm=True,
+        )
+        target = TargetObservation("cup", 0.9, 0.5, 0.5, 0.08)
+
+        for _ in range(3):
+            self.assertEqual(machine.update(target, allow_close=False), GraspState.ARMED)
+        self.assertEqual(machine.stable_count, 3)
+        self.assertEqual(machine.update(target, allow_close=True), GraspState.CLOSING)
+
     def test_generic_foreground_detects_new_object_in_grasp_zone(self):
         detector = ForegroundDetector(
             pixel_threshold=25,
