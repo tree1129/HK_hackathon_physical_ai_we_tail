@@ -150,6 +150,26 @@ def _best_target_in_zone(
     return max(eligible, key=lambda detection: detection.score, default=None)
 
 
+def _calibration_plane_target(
+    frame,
+    zone: tuple[float, float, float, float],
+) -> ObjectDetection:
+    height, width = frame.shape[:2]
+    x1, y1, x2, y2 = zone
+    left, top = int(x1 * width), int(y1 * height)
+    right, bottom = int(x2 * width), int(y2 * height)
+    return ObjectDetection(
+        label="calibration-plane",
+        score=1.0,
+        x=left,
+        y=top,
+        width=max(1, right - left),
+        height=max(1, bottom - top),
+        frame_width=width,
+        frame_height=height,
+    )
+
+
 class _UnavailableDepthReceiver:
     def latest(self, now: float):
         return None
@@ -739,6 +759,7 @@ class WebConsoleRuntime:
             fps = 0.0
             failures = 0
             last_frame = None
+            last_frame_source: VisionSource | None = None
             last_depth_sequence = -1
             previous_depth_time: float | None = None
             depth_fps = 0.0
@@ -790,7 +811,11 @@ class WebConsoleRuntime:
                         break
                     changed_pose = self._apply_action(
                         action,
-                        last_frame,
+                        (
+                            last_frame
+                            if last_frame_source == mode_state.vision_source
+                            else None
+                        ),
                         mode_state,
                         machine,
                         foreground,
@@ -817,6 +842,8 @@ class WebConsoleRuntime:
                             self._set_status(last_event="iPhone 深度流已过期，自动解除布防")
                         self._set_status(
                             camera_ok=False,
+                            state=machine.state.value,
+                            stable_count=machine.stable_count,
                             depth_phase=DepthPhase.DEPTH_UNAVAILABLE.value,
                             depth_stable_count=0,
                             target_depth_mm=None,
@@ -839,6 +866,7 @@ class WebConsoleRuntime:
                 failures = 0
                 frame = sample.bgr
                 last_frame = frame
+                last_frame_source = sample.source
                 if sample.depth is not None:
                     last_depth_sequence = sample.depth.sequence
                     if previous_depth_time is not None:
@@ -912,6 +940,12 @@ class WebConsoleRuntime:
                                 machine.min_area_ratio,
                                 machine.max_area_ratio,
                             )
+                        if (
+                            target is None
+                            and mode_state.vision_source == VisionSource.IPHONE_LIDAR
+                            and machine.state == GraspState.DISARMED
+                        ):
+                            target = _calibration_plane_target(frame, zone)
                         if mode_state.vision_source == VisionSource.MAC_CAMERA:
                             machine.update(
                                 None
