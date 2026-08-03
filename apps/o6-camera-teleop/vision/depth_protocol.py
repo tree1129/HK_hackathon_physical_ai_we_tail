@@ -61,7 +61,7 @@ def parse_depth_frame(
     header_end = 4 + header_length
     try:
         header = json.loads(payload[4:header_end].decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+    except (ValueError, RecursionError):
         raise DepthProtocolError("invalid JSON header") from None
     if not isinstance(header, dict):
         raise DepthProtocolError("header must be an object")

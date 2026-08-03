@@ -2,6 +2,7 @@ import json
 import math
 import struct
 import unittest
+from unittest import mock
 
 import cv2
 import numpy as np
@@ -60,6 +61,20 @@ def make_fixture(
     return payload[:-truncate] if truncate else payload
 
 
+def with_jpeg(payload, jpeg):
+    header_length = struct.unpack_from(">I", payload, 0)[0]
+    header = json.loads(payload[4:4 + header_length])
+    original_rgb_length = header["rgb_length"]
+    header["rgb_length"] = len(jpeg)
+    header_bytes = json.dumps(header).encode()
+    return (
+        struct.pack(">I", len(header_bytes))
+        + header_bytes
+        + jpeg
+        + payload[4 + header_length + original_rgb_length:]
+    )
+
+
 class DepthProtocolTest(unittest.TestCase):
     def parse(self, payload, max_message_bytes=1_000_000):
         return parse_depth_frame(payload, received_monotonic=42.5, max_message_bytes=max_message_bytes)
@@ -103,6 +118,13 @@ class DepthProtocolTest(unittest.TestCase):
         nested_json = ("[" * 1_100 + "0" + "]" * 1_100).encode("utf-8")
         self.assert_rejected(struct.pack(">I", len(nested_json)) + nested_json, "invalid JSON header")
 
+    def test_normalizes_json_value_errors(self):
+        with mock.patch(
+            "vision.depth_protocol.json.loads",
+            side_effect=ValueError("integer string conversion limit"),
+        ):
+            self.assert_rejected(make_fixture(), "invalid JSON header")
+
     def test_rejects_oversize_message(self):
         payload = make_fixture()
         with self.assertRaisesRegex(DepthProtocolError, "message exceeds"):
@@ -122,7 +144,9 @@ class DepthProtocolTest(unittest.TestCase):
 
     def test_rejects_invalid_dimensions_and_length_mismatch(self):
         self.assert_rejected(make_fixture(header_updates={"rgb_width": 0}), "dimensions")
-        self.assert_rejected(make_fixture(header_updates={"rgb_width": 1921}), "RGB dimensions")
+        with mock.patch("vision.depth_protocol.cv2.imdecode") as imdecode:
+            self.assert_rejected(make_fixture(header_updates={"rgb_width": 1921}), "RGB dimensions")
+            imdecode.assert_not_called()
         self.assert_rejected(make_fixture(header_updates={"rgb_height": 1081}), "RGB dimensions")
         self.assert_rejected(make_fixture(header_updates={"depth_length": 7}), "depth length")
         self.assert_rejected(make_fixture(header_updates={"rgb_length": 1}), "body length")
@@ -141,7 +165,19 @@ class DepthProtocolTest(unittest.TestCase):
         header_bytes = json.dumps(header).encode()
         empty_jpeg = struct.pack(">I", len(header_bytes)) + header_bytes + payload[4 + header_length + original_rgb_length:]
         self.assert_rejected(empty_jpeg, "invalid JPEG")
-        self.assert_rejected(make_fixture(header_updates={"rgb_width": 3}), "JPEG dimensions")
+        with mock.patch("vision.depth_protocol.cv2.imdecode") as imdecode:
+            self.assert_rejected(make_fixture(header_updates={"rgb_width": 3}), "JPEG dimensions")
+            imdecode.assert_not_called()
+
+    def test_rejects_malformed_sof_before_decode(self):
+        malformed_jpegs = (
+            b"\xff\xd8\xff\xc0\x00",
+            b"\xff\xd8\xff\xc0\x00\x08\x08",
+        )
+        for jpeg in malformed_jpegs:
+            with self.subTest(jpeg=jpeg), mock.patch("vision.depth_protocol.cv2.imdecode") as imdecode:
+                self.assert_rejected(with_jpeg(make_fixture(), jpeg), "invalid JPEG")
+                imdecode.assert_not_called()
 
     def test_rejects_invalid_matrix_metadata(self):
         self.assert_rejected(make_fixture(header_updates={"intrinsics": [1.0] * 3}), "intrinsics")
