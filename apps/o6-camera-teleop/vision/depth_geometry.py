@@ -42,19 +42,25 @@ def measure_depth(
         or not 0 <= min_valid_ratio <= 1
     ):
         raise ValueError("min_valid_ratio must be in [0, 1]")
-    if not isinstance(min_confidence, Integral) or isinstance(min_confidence, bool):
-        raise ValueError("min_confidence must be an integer")
+    if (
+        not isinstance(min_confidence, Integral)
+        or isinstance(min_confidence, bool)
+        or not 0 <= min_confidence <= 255
+    ):
+        raise ValueError("min_confidence must be an integer in [0, 255]")
     contact_depth = _finite_number_or_none(contact_depth_mm, "contact_depth_mm")
 
     depth_height, depth_width = depth.shape
-    inset_x = box_x + box_width * (1 - inner_ratio) / 2
-    inset_y = box_y + box_height * (1 - inner_ratio) / 2
-    inset_width = box_width * inner_ratio
-    inset_height = box_height * inner_ratio
-    start_x = _clamp(math.floor(inset_x * depth_width / rgb_width), 0, depth_width)
-    start_y = _clamp(math.floor(inset_y * depth_height / rgb_height), 0, depth_height)
-    end_x = _clamp(math.ceil((inset_x + inset_width) * depth_width / rgb_width), 0, depth_width)
-    end_y = _clamp(math.ceil((inset_y + inset_height) * depth_height / rgb_height), 0, depth_height)
+    normalized_start_x, normalized_end_x = _normalized_inner_bounds(
+        box_x, box_width, rgb_width, inner_ratio,
+    )
+    normalized_start_y, normalized_end_y = _normalized_inner_bounds(
+        box_y, box_height, rgb_height, inner_ratio,
+    )
+    start_x = _clamp(_scaled_bound(normalized_start_x, depth_width, math.floor), 0, depth_width)
+    start_y = _clamp(_scaled_bound(normalized_start_y, depth_height, math.floor), 0, depth_height)
+    end_x = _clamp(_scaled_bound(normalized_end_x, depth_width, math.ceil), 0, depth_width)
+    end_y = _clamp(_scaled_bound(normalized_end_y, depth_height, math.ceil), 0, depth_height)
     if start_x >= end_x or start_y >= end_y:
         raise ValueError("mapped depth ROI is empty")
 
@@ -64,6 +70,7 @@ def measure_depth(
     valid = (
         np.isfinite(depth_values)
         & (depth_values > 0)
+        & np.isfinite(confidence_values)
         & (confidence_values >= min_confidence)
     )
     valid_ratio = float(np.count_nonzero(valid) / valid.size)
@@ -98,9 +105,36 @@ class ContactCalibrator:
 
 
 def _depth_array(value, name: str) -> np.ndarray:
-    if not isinstance(value, np.ndarray) or value.ndim != 2:
-        raise ValueError(f"{name} must be a 2D NumPy array")
+    if (
+        not isinstance(value, np.ndarray)
+        or value.ndim != 2
+        or not np.issubdtype(value.dtype, np.number)
+        or np.issubdtype(value.dtype, np.complexfloating)
+    ):
+        raise ValueError(f"{name} must be a 2D real numeric NumPy array")
     return value
+
+
+def _normalized_inner_bounds(
+    origin: float,
+    length: float,
+    image_length: float,
+    inner_ratio: float,
+) -> tuple[float, float]:
+    normalized_origin = origin / image_length
+    normalized_length = length / image_length
+    start = normalized_origin + normalized_length * (1 - inner_ratio) / 2
+    end = normalized_origin + normalized_length * (1 + inner_ratio) / 2
+    if not all(math.isfinite(value) for value in (normalized_origin, normalized_length, start, end)):
+        raise ValueError("mapped depth ROI is nonfinite")
+    return start, end
+
+
+def _scaled_bound(normalized_coordinate: float, dimension: int, rounding) -> int:
+    coordinate = normalized_coordinate * dimension
+    if not math.isfinite(coordinate):
+        raise ValueError("mapped depth ROI is nonfinite")
+    return rounding(coordinate)
 
 
 def _positive_pair(value, name: str) -> tuple[float, float]:
