@@ -30,6 +30,23 @@ control:
   max_delta_per_command: 12
   lost_hand_timeout_ms: 500
 
+iphone_lidar:
+  enabled: true
+  bind_host: 0.0.0.0
+  port: 8766
+  service_name: _o6depth._tcp
+  target_fps: 15
+  max_fps: 20
+  max_message_bytes: 1572864
+  stream_timeout_ms: 500
+  min_confidence: medium
+  min_valid_depth_ratio: 0.20
+  roi_inner_ratio: 0.50
+  open_threshold_mm: 50
+  contact_threshold_mm: 0
+  contact_stable_frames: 8
+  contact_depth_mm: null
+
 object_grasp:
   model_path: models/efficientdet_lite0_int8.tflite
   score_threshold: 0.45
