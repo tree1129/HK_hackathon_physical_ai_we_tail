@@ -6,6 +6,7 @@ import copy
 import logging
 import os
 import queue
+import secrets
 import sys
 import threading
 import time
@@ -34,7 +35,20 @@ ALLOWED_ACTIONS = {
     "follow-pause",
     "hand-left",
     "hand-right",
+    "source-mac-camera",
+    "source-iphone-lidar",
+    "depth-calibrate-contact",
+    "depth-clear-calibration",
 }
+
+DEPTH_CONFIDENCE = {"low": 0, "medium": 1, "high": 2}
+
+
+def confidence_value(name: str) -> int:
+    try:
+        return DEPTH_CONFIDENCE[name]
+    except (KeyError, TypeError):
+        raise ValueError(f"unknown depth confidence: {name!r}") from None
 
 
 def ensure_macos_pcan_loader() -> None:
@@ -56,11 +70,16 @@ import cv2
 import yaml
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from control.console_mode import ConsoleMode, ConsoleModeState, TrackingState
+from config_store import save_contact_depth
+from control.console_mode import ConsoleMode, ConsoleModeState, TrackingState, VisionSource
+from control.depth_grasp import DepthGraspGate, DepthPhase
 from control.filters import CommandFilter
 from control.grasp_state import GraspState, GraspStateMachine, TargetObservation
 from control.hand_mapper import CHANNEL_ORDER, HandMapper
 from control.o6_controller import O6Controller
+from vision.depth_geometry import ContactCalibrator, DepthMeasurement, measure_depth
+from vision.depth_receiver import DepthReceiver
+from vision.frame_source import FrameSourceManager
 from vision.foreground_detector import ForegroundDetector
 from vision.hand_tracker import HandDetection, HandTracker
 from vision.object_detector import ObjectDetection, ObjectTracker
@@ -112,6 +131,28 @@ def _select_target(
         frame_width=generic.frame_width,
         frame_height=generic.frame_height,
     )
+
+
+def _best_target_in_zone(
+    detections: list[ObjectDetection],
+    zone: tuple[float, float, float, float],
+    min_area: float,
+    max_area: float,
+) -> ObjectDetection | None:
+    x1, y1, x2, y2 = zone
+    eligible = [
+        detection
+        for detection in detections
+        if x1 <= detection.center_normalized[0] <= x2
+        and y1 <= detection.center_normalized[1] <= y2
+        and min_area <= detection.area_ratio <= max_area
+    ]
+    return max(eligible, key=lambda detection: detection.score, default=None)
+
+
+class _UnavailableDepthReceiver:
+    def latest(self, now: float):
+        return None
 
 
 def _hand_in_zone(
@@ -194,11 +235,50 @@ def _annotate_frame(
         HandTracker.draw(frame, hand_detection, mirrored=mirrored)
 
 
+def _depth_colormap(depth_mm, roi=None):
+    valid = depth_mm > 0
+    scaled = cv2.normalize(
+        depth_mm,
+        None,
+        0,
+        255,
+        cv2.NORM_MINMAX,
+        dtype=cv2.CV_8U,
+        mask=valid.astype("uint8"),
+    )
+    image = cv2.applyColorMap(255 - scaled, cv2.COLORMAP_TURBO)
+    image[~valid] = 0
+    if roi is not None:
+        x1, y1, x2, y2 = roi
+        cv2.rectangle(image, (x1, y1), (x2, y2), (255, 255, 255), 2)
+    return image
+
+
 class WebConsoleRuntime:
-    def __init__(self, config: dict, camera: int, requested_dry_run: bool) -> None:
+    def __init__(
+        self,
+        config: dict,
+        camera: int,
+        requested_dry_run: bool,
+        config_path: Path | None = None,
+    ) -> None:
         self.config = config
+        self.config_path = (config_path or (PROJECT_DIR / "config.yaml")).resolve()
         self.camera = int(camera)
         self.requested_dry_run = bool(requested_dry_run)
+        lidar_config = config.get("iphone_lidar", {})
+        self.pairing_code = f"{secrets.randbelow(1_000_000):06d}"
+        self.depth_receiver: DepthReceiver | None = None
+        if lidar_config.get("enabled", True):
+            self.depth_receiver = DepthReceiver(
+                self.pairing_code,
+                host=str(lidar_config.get("bind_host", "0.0.0.0")),
+                port=int(lidar_config.get("port", 8766)),
+                timeout_seconds=float(lidar_config.get("stream_timeout_ms", 500)) / 1000.0,
+                max_message_bytes=int(lidar_config.get("max_message_bytes", 1_572_864)),
+                max_fps=float(lidar_config.get("max_fps", 20)),
+                service_name=str(lidar_config.get("service_name", "_o6depth._tcp")),
+            )
         safe_open = [int(value) for value in config["o6"]["safe_open_pose"]]
         self._status = {
             "ready": False,
@@ -230,18 +310,50 @@ class WebConsoleRuntime:
             "commands": 0,
             "last_event": "正在初始化摄像头与视觉模型",
             "last_error": None,
+            "vision_source": VisionSource.MAC_CAMERA.value,
+            "pairing_code": self.pairing_code,
+            "iphone_receiver_running": False,
+            "iphone_connected": False,
+            "iphone_device": None,
+            "bonjour_state": "stopped",
+            "bonjour_error": None,
+            "depth_fps": 0.0,
+            "depth_latency_ms": None,
+            "depth_stream_age_ms": None,
+            "depth_valid_ratio": 0.0,
+            "depth_calibrated": lidar_config.get("contact_depth_mm") is not None,
+            "depth_calibrating": False,
+            "contact_depth_mm": lidar_config.get("contact_depth_mm"),
+            "target_depth_mm": None,
+            "signed_distance_mm": None,
+            "depth_phase": DepthPhase.DEPTH_UNAVAILABLE.value,
+            "depth_stable_count": 0,
+            "depth_required_frames": int(lidar_config.get("contact_stable_frames", 8)),
         }
         self._status_lock = threading.Lock()
         self._frame_condition = threading.Condition()
+        self._depth_condition = threading.Condition()
         self._jpeg: bytes | None = None
+        self._depth_jpeg: bytes | None = None
         self._frame_sequence = 0
+        self._depth_frame_sequence = 0
         self._actions: queue.Queue[str] = queue.Queue(maxsize=20)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._calibrating = False
+        self._latest_target_depth_mm: float | None = None
 
     def start(self) -> None:
         if self._thread is not None:
             return
+        if self.depth_receiver is not None:
+            try:
+                self.depth_receiver.start()
+            except Exception as exc:
+                self._set_status(
+                    last_error=f"iPhone depth receiver failed: {type(exc).__name__}: {exc}",
+                    last_event="iPhone 深度接收服务启动失败，Mac 摄像头仍可使用",
+                )
         self._thread = threading.Thread(target=self._run, name="o6-camera-runtime", daemon=True)
         self._thread.start()
 
@@ -249,8 +361,16 @@ class WebConsoleRuntime:
         self._stop_event.set()
         with self._frame_condition:
             self._frame_condition.notify_all()
+        with self._depth_condition:
+            self._depth_condition.notify_all()
         if self._thread is not None:
             self._thread.join(timeout=5.0)
+            self._thread = None
+        if self.depth_receiver is not None:
+            try:
+                self.depth_receiver.stop()
+            except Exception as exc:
+                self._set_status(last_error=f"iPhone depth receiver stop failed: {exc}")
 
     def status_snapshot(self) -> dict:
         with self._status_lock:
@@ -280,6 +400,22 @@ class WebConsoleRuntime:
             if jpeg is not None:
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
 
+    def depth_mjpeg_stream(self) -> Iterator[bytes]:
+        sequence = -1
+        while not self._stop_event.is_set():
+            with self._depth_condition:
+                self._depth_condition.wait_for(
+                    lambda: self._depth_frame_sequence != sequence
+                    or self._stop_event.is_set(),
+                    timeout=1.0,
+                )
+                if self._stop_event.is_set():
+                    return
+                jpeg = self._depth_jpeg
+                sequence = self._depth_frame_sequence
+            if jpeg is not None:
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+
     def _set_status(self, **values) -> None:
         with self._status_lock:
             self._status.update(values)
@@ -293,6 +429,15 @@ class WebConsoleRuntime:
             self._frame_sequence += 1
             self._frame_condition.notify_all()
 
+    def _publish_depth_frame(self, frame) -> None:
+        ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        if not ok:
+            return
+        with self._depth_condition:
+            self._depth_jpeg = encoded.tobytes()
+            self._depth_frame_sequence += 1
+            self._depth_condition.notify_all()
+
     def _apply_action(
         self,
         action: str,
@@ -303,6 +448,8 @@ class WebConsoleRuntime:
         controller: O6Controller,
         hand_filter: CommandFilter,
         grasp_filter: CommandFilter,
+        depth_gate: DepthGraspGate,
+        calibrator: ContactCalibrator,
         safe_open: list[int],
     ) -> list[int] | None:
         if action in ("hand-left", "hand-right"):
@@ -320,6 +467,9 @@ class WebConsoleRuntime:
                 print(f"WARNING: safe-open before hand switch failed: {exc}")
             mode_state.pause_follow()
             machine.reset_after_open()
+            depth_gate.reset()
+            calibrator.reset()
+            self._calibrating = False
             foreground.clear()
             hand_filter.reset(safe_open)
             grasp_filter.reset(safe_open)
@@ -351,11 +501,75 @@ class WebConsoleRuntime:
             )
             return safe_open.copy()
 
+        if action in ("source-mac-camera", "source-iphone-lidar"):
+            source = (
+                VisionSource.MAC_CAMERA
+                if action == "source-mac-camera"
+                else VisionSource.IPHONE_LIDAR
+            )
+            controller.send_safe_open(safe_open)
+            hand_filter.reset(safe_open)
+            grasp_filter.reset(safe_open)
+            machine.reset_after_open()
+            depth_gate.reset()
+            calibrator.reset()
+            self._calibrating = False
+            self._latest_target_depth_mm = None
+            foreground.clear()
+            mode_state.switch_source(source)
+            label = "Mac 摄像头" if source == VisionSource.MAC_CAMERA else "iPhone LiDAR"
+            self._set_status(
+                vision_source=source.value,
+                depth_calibrating=False,
+                depth_phase=DepthPhase.DEPTH_UNAVAILABLE.value,
+                depth_stable_count=0,
+                target_depth_mm=None,
+                signed_distance_mm=None,
+                last_event=f"已切换到{label}，当前未布防",
+            )
+            return safe_open.copy()
+
+        if action == "depth-calibrate-contact":
+            if mode_state.vision_source != VisionSource.IPHONE_LIDAR:
+                self._set_status(last_event="请先切换到 iPhone LiDAR")
+            elif self._latest_target_depth_mm is None:
+                self._set_status(last_event="目标深度无效，无法记录 0 cm")
+            elif machine.state != GraspState.DISARMED:
+                self._set_status(last_event="请先解除布防再标定 0 cm")
+            else:
+                calibrator.reset()
+                self._calibrating = True
+                self._set_status(depth_calibrating=True, last_event="正在采集 0 cm 接触面")
+            return None
+
+        if action == "depth-clear-calibration":
+            try:
+                save_contact_depth(self.config_path, None)
+                self.config["iphone_lidar"]["contact_depth_mm"] = None
+                depth_gate.reset()
+                calibrator.reset()
+                self._calibrating = False
+                machine.disarm()
+                self._set_status(
+                    depth_calibrated=False,
+                    depth_calibrating=False,
+                    contact_depth_mm=None,
+                    signed_distance_mm=None,
+                    depth_phase=DepthPhase.DEPTH_UNAVAILABLE.value,
+                    last_event="已清除 0 cm 标定，自动抓取保持未布防",
+                )
+            except Exception as exc:
+                self._set_status(last_event=f"清除标定失败：{type(exc).__name__}: {exc}")
+            return None
+
         if action in ("mode-hand", "mode-object"):
             controller.send_safe_open(safe_open)
             hand_filter.reset(safe_open)
             grasp_filter.reset(safe_open)
             machine.reset_after_open()
+            depth_gate.reset()
+            calibrator.reset()
+            self._calibrating = False
             foreground.clear()
             mode = (
                 ConsoleMode.HAND_FOLLOW
@@ -363,12 +577,14 @@ class WebConsoleRuntime:
                 else ConsoleMode.OBJECT_GRASP
             )
             mode_state.switch(mode)
+            if mode == ConsoleMode.HAND_FOLLOW:
+                mode_state.switch_source(VisionSource.MAC_CAMERA)
             event = (
                 "已切换到手势跟随；点击启用跟随后才会发送动作"
                 if mode == ConsoleMode.HAND_FOLLOW
                 else "已切换到物品抓取；当前未布防"
             )
-            self._set_status(last_event=event)
+            self._set_status(last_event=event, vision_source=mode_state.vision_source.value)
             return safe_open.copy()
 
         if action == "follow-enable":
@@ -391,8 +607,19 @@ class WebConsoleRuntime:
                 return None
             if controller.emergency_stopped:
                 self._set_status(last_event="急停已锁定，请重启程序后再布防")
+            elif (
+                mode_state.vision_source == VisionSource.IPHONE_LIDAR
+                and (
+                    self.depth_receiver is None
+                    or not self.depth_receiver.status().connected
+                    or self._latest_target_depth_mm is None
+                    or self.config["iphone_lidar"].get("contact_depth_mm") is None
+                )
+            ):
+                self._set_status(last_event="iPhone 未连接或 0 cm 未标定，不能布防")
             elif machine.state == GraspState.DISARMED:
-                foreground.capture_background(frame)
+                if frame is not None:
+                    foreground.capture_background(frame)
                 machine.arm()
                 self._set_status(last_event="已布防并记录背景，现在将物品放入绿色区域")
             else:
@@ -403,6 +630,7 @@ class WebConsoleRuntime:
                 return None
             if machine.state == GraspState.ARMED:
                 machine.disarm()
+                depth_gate.reset()
                 foreground.clear()
                 self._set_status(last_event="已解除布防")
             else:
@@ -413,6 +641,9 @@ class WebConsoleRuntime:
             grasp_filter.reset(safe_open)
             mode_state.pause_follow()
             machine.reset_after_open()
+            depth_gate.reset()
+            calibrator.reset()
+            self._calibrating = False
             foreground.clear()
             self._set_status(last_event="已发送安全张开并复位；急停锁定不会自动解除")
             return safe_open.copy()
@@ -423,7 +654,10 @@ class WebConsoleRuntime:
         return None
 
     def _run(self) -> None:
-        capture = cv2.VideoCapture(self.camera)
+        frame_sources = FrameSourceManager(
+            self.camera,
+            self.depth_receiver or _UnavailableDepthReceiver(),
+        )
         tracker: ObjectTracker | None = None
         hand_tracker: HandTracker | None = None
         controller: O6Controller | None = None
@@ -431,12 +665,10 @@ class WebConsoleRuntime:
         safe_open = [int(value) for value in self.config["o6"]["safe_open_pose"]]
         current_pose = safe_open.copy()
         try:
-            if not capture.isOpened():
-                raise RuntimeError(f"无法打开摄像头索引 {self.camera}")
-            self._set_status(camera_ok=True)
             grasp_config = self.config["object_grasp"]
             vision_config = self.config["vision"]
             control_config = self.config["control"]
+            lidar_config = self.config["iphone_lidar"]
             tracker = ObjectTracker(
                 model_path=_resolve(grasp_config["model_path"], PROJECT_DIR),
                 score_threshold=grasp_config["score_threshold"],
@@ -468,6 +700,12 @@ class WebConsoleRuntime:
                 auto_arm=grasp_config.get("auto_arm", False),
             )
             machine.reset_after_open()
+            depth_gate = DepthGraspGate(
+                open_threshold_mm=lidar_config["open_threshold_mm"],
+                contact_threshold_mm=lidar_config["contact_threshold_mm"],
+                stable_frames=int(lidar_config["contact_stable_frames"]),
+            )
+            calibrator = ContactCalibrator(required_samples=15)
             mode_state = ConsoleModeState()
             hand_mapper = HandMapper(self.config["o6"]["channels"], self.config.get("calibration"))
             hand_filter = CommandFilter(
@@ -501,6 +739,12 @@ class WebConsoleRuntime:
             previous_time = start_time
             fps = 0.0
             failures = 0
+            last_frame = None
+            last_depth_sequence = -1
+            previous_depth_time: float | None = None
+            depth_fps = 0.0
+            measurement = DepthMeasurement(None, None, 0.0, (0, 0, 0, 0))
+            decision = depth_gate.update(None, armed=False, hand_blocked=False)
             self._set_status(
                 ready=True,
                 dry_run=controller.dry_run,
@@ -519,15 +763,26 @@ class WebConsoleRuntime:
             )
 
             while not self._stop_event.is_set():
-                ok, frame = capture.read()
-                if not ok:
-                    failures += 1
-                    if failures >= 10:
-                        raise RuntimeError("摄像头连续 10 帧读取失败")
-                    time.sleep(0.05)
-                    continue
-                failures = 0
                 now = time.monotonic()
+                receiver_status = (
+                    self.depth_receiver.status(now) if self.depth_receiver is not None else None
+                )
+                if receiver_status is not None:
+                    stream_fresh = (
+                        receiver_status.connected
+                        and receiver_status.last_frame_age_ms is not None
+                        and receiver_status.last_frame_age_ms
+                        <= float(lidar_config["stream_timeout_ms"])
+                    )
+                    self._set_status(
+                        iphone_receiver_running=receiver_status.running,
+                        iphone_connected=stream_fresh,
+                        iphone_device=receiver_status.connected_device,
+                        depth_latency_ms=receiver_status.depth_latency_ms,
+                        depth_stream_age_ms=receiver_status.last_frame_age_ms,
+                        bonjour_state=receiver_status.bonjour_state,
+                        bonjour_error=receiver_status.bonjour_error,
+                    )
 
                 while True:
                     try:
@@ -536,18 +791,65 @@ class WebConsoleRuntime:
                         break
                     changed_pose = self._apply_action(
                         action,
-                        frame,
+                        last_frame,
                         mode_state,
                         machine,
                         foreground,
                         controller,
                         hand_filter,
                         grasp_filter,
+                        depth_gate,
+                        calibrator,
                         safe_open,
                     )
                     if changed_pose is not None:
                         current_pose = changed_pose
                         preview_pose = changed_pose.copy()
+
+                sample = frame_sources.read(mode_state.vision_source, now)
+                if sample is None:
+                    failures += 1
+                    self._latest_target_depth_mm = None
+                    if mode_state.vision_source == VisionSource.IPHONE_LIDAR:
+                        depth_gate.reset()
+                        if machine.state == GraspState.ARMED:
+                            machine.disarm()
+                            foreground.clear()
+                            self._set_status(last_event="iPhone 深度流已过期，自动解除布防")
+                        self._set_status(
+                            camera_ok=False,
+                            depth_phase=DepthPhase.DEPTH_UNAVAILABLE.value,
+                            depth_stable_count=0,
+                            target_depth_mm=None,
+                            signed_distance_mm=None,
+                        )
+                    else:
+                        self._set_status(camera_ok=False)
+                        if failures == 10:
+                            self._set_status(last_event="Mac 摄像头连续读取失败，可切换到 iPhone LiDAR")
+                    time.sleep(0.02 if mode_state.vision_source == VisionSource.IPHONE_LIDAR else 0.05)
+                    continue
+
+                if (
+                    sample.depth is not None
+                    and sample.depth.sequence == last_depth_sequence
+                ):
+                    time.sleep(0.005)
+                    continue
+
+                failures = 0
+                frame = sample.bgr
+                last_frame = frame
+                if sample.depth is not None:
+                    last_depth_sequence = sample.depth.sequence
+                    if previous_depth_time is not None:
+                        instant_depth_fps = 1.0 / max(now - previous_depth_time, 1e-6)
+                        depth_fps = (
+                            instant_depth_fps
+                            if depth_fps == 0
+                            else 0.9 * depth_fps + 0.1 * instant_depth_fps
+                        )
+                    previous_depth_time = now
 
                 timestamp_ms = int((now - start_time) * 1000)
                 hand_detection = hand_tracker.process(frame, timestamp_ms)
@@ -556,6 +858,9 @@ class WebConsoleRuntime:
                     detections = []
                     target = None
                     hand_blocked = False
+                    depth_gate.reset()
+                    decision = depth_gate.update(None, armed=False, hand_blocked=False)
+                    measurement = DepthMeasurement(None, None, 0.0, (0, 0, 0, 0))
                     if hand_detection is not None:
                         hand_target_pose, raw_sample = hand_mapper.map_landmarks(
                             hand_detection.geometry_landmarks
@@ -598,10 +903,83 @@ class WebConsoleRuntime:
                             else None
                         )
                         target = _select_target(generic, detections)
-                        machine.update(
-                            None if hand_blocked or target is None else _observation(target)
-                        )
+                        if (
+                            target is None
+                            and mode_state.vision_source == VisionSource.IPHONE_LIDAR
+                        ):
+                            target = _best_target_in_zone(
+                                detections,
+                                zone,
+                                machine.min_area_ratio,
+                                machine.max_area_ratio,
+                            )
+                        if mode_state.vision_source == VisionSource.MAC_CAMERA:
+                            machine.update(
+                                None
+                                if hand_blocked or target is None
+                                else _observation(target)
+                            )
                         last_object_detection_time = now
+
+                    if mode_state.vision_source == VisionSource.IPHONE_LIDAR:
+                        measurement = DepthMeasurement(None, None, 0.0, (0, 0, 0, 0))
+                        if sample.depth is not None and target is not None:
+                            measurement = measure_depth(
+                                sample.depth.depth_mm,
+                                sample.depth.confidence,
+                                rgb_box=(target.x, target.y, target.width, target.height),
+                                rgb_size=(target.frame_width, target.frame_height),
+                                inner_ratio=float(lidar_config["roi_inner_ratio"]),
+                                min_confidence=confidence_value(lidar_config["min_confidence"]),
+                                min_valid_ratio=float(lidar_config["min_valid_depth_ratio"]),
+                                contact_depth_mm=lidar_config.get("contact_depth_mm"),
+                            )
+                        self._latest_target_depth_mm = measurement.target_depth_mm
+
+                        if self._calibrating:
+                            calibrated = calibrator.add(measurement.target_depth_mm)
+                            if calibrated is not None:
+                                try:
+                                    save_contact_depth(self.config_path, calibrated)
+                                    lidar_config["contact_depth_mm"] = calibrated
+                                    self._calibrating = False
+                                    self._set_status(
+                                        depth_calibrated=True,
+                                        depth_calibrating=False,
+                                        contact_depth_mm=round(calibrated, 1),
+                                        last_event="0 cm 接触面标定已保存",
+                                    )
+                                except Exception as exc:
+                                    self._calibrating = False
+                                    self._set_status(
+                                        depth_calibrating=False,
+                                        last_event=f"保存标定失败：{type(exc).__name__}: {exc}",
+                                    )
+
+                        decision = depth_gate.update(
+                            measurement.signed_distance_mm,
+                            armed=machine.state == GraspState.ARMED,
+                            hand_blocked=hand_blocked,
+                        )
+                        machine.update(
+                            None if hand_blocked or target is None else _observation(target),
+                            allow_close=decision.contact_confirmed,
+                        )
+                        if (
+                            decision.should_open
+                            and machine.state == GraspState.ARMED
+                            and not controller.emergency_stopped
+                            and now - last_command_time >= command_period
+                        ):
+                            current_pose = grasp_filter.apply(safe_open)
+                            controller.move(current_pose)
+                            command_count += 1
+                            last_command_time = now
+                    else:
+                        depth_gate.reset()
+                        decision = depth_gate.update(None, armed=False, hand_blocked=False)
+                        measurement = DepthMeasurement(None, None, 0.0, (0, 0, 0, 0))
+                        self._latest_target_depth_mm = None
 
                     if (
                         machine.state == GraspState.CLOSING
@@ -640,6 +1018,15 @@ class WebConsoleRuntime:
                     hand_blocked,
                 )
                 self._publish_frame(display)
+                if sample.depth is not None:
+                    depth_roi = (
+                        measurement.depth_roi
+                        if measurement.depth_roi != (0, 0, 0, 0)
+                        else None
+                    )
+                    self._publish_depth_frame(
+                        _depth_colormap(sample.depth.depth_mm, depth_roi)
+                    )
                 hand_mode = mode_state.mode == ConsoleMode.HAND_FOLLOW
                 display_pose = (
                     preview_pose
@@ -688,6 +1075,24 @@ class WebConsoleRuntime:
                     normalized=normalized_sample.copy(),
                     fps=round(fps, 1),
                     commands=command_count,
+                    vision_source=mode_state.vision_source.value,
+                    depth_fps=round(depth_fps, 1),
+                    depth_valid_ratio=round(measurement.valid_ratio, 3),
+                    depth_calibrated=lidar_config.get("contact_depth_mm") is not None,
+                    depth_calibrating=self._calibrating,
+                    contact_depth_mm=lidar_config.get("contact_depth_mm"),
+                    target_depth_mm=(
+                        None
+                        if measurement.target_depth_mm is None
+                        else round(measurement.target_depth_mm, 1)
+                    ),
+                    signed_distance_mm=(
+                        None
+                        if measurement.signed_distance_mm is None
+                        else round(measurement.signed_distance_mm, 1)
+                    ),
+                    depth_phase=decision.phase.value,
+                    depth_stable_count=decision.stable_count,
                 )
         except Exception as exc:
             message = f"{type(exc).__name__}: {exc}"
@@ -706,10 +1111,12 @@ class WebConsoleRuntime:
                 tracker.close()
             if hand_tracker is not None:
                 hand_tracker.close()
-            capture.release()
+            frame_sources.close()
             self._set_status(camera_ok=False, connected=False)
             with self._frame_condition:
                 self._frame_condition.notify_all()
+            with self._depth_condition:
+                self._depth_condition.notify_all()
 
 
 def create_app(runtime) -> Flask:
@@ -750,6 +1157,14 @@ def create_app(runtime) -> Flask:
             headers={"Cache-Control": "no-store"},
         )
 
+    @app.get("/depth_feed")
+    def depth_feed():
+        return Response(
+            runtime.depth_mjpeg_stream(),
+            mimetype="multipart/x-mixed-replace; boundary=frame",
+            headers={"Cache-Control": "no-store"},
+        )
+
     return app
 
 
@@ -772,7 +1187,7 @@ def main() -> int:
     with config_path.open("r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
     requested_dry_run = not args.real if (args.real or args.dry_run) else bool(config["o6"].get("dry_run", True))
-    runtime = WebConsoleRuntime(config, args.camera, requested_dry_run)
+    runtime = WebConsoleRuntime(config, args.camera, requested_dry_run, config_path)
     app = create_app(runtime)
     runtime.start()
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
