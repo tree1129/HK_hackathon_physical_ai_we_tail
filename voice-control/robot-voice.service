@@ -1,0 +1,14 @@
+[Unit]
+Description=Offline voice trigger for Onero right-arm wave action
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/mememe/robot-voice/robot_voice_trigger.py
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:/home/mememe/robot-voice/voice.log
+StandardError=append:/home/mememe/robot-voice/voice.log
+
+[Install]
+WantedBy=default.target

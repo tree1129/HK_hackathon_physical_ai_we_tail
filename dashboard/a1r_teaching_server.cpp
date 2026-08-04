@@ -35,6 +35,22 @@ static std::unique_ptr<OneroDragTeaching> teaching;
 static std::unique_ptr<OneroArm> arm;
 static bool spatial_enabled = false;
 static std::mutex controller_mutex;
+static const fs::path voice_log="/home/mememe/robot-voice/voice.log";
+
+static std::string command_output(const char *command) {
+  std::string out; char buffer[256]{};
+  FILE *pipe=popen(command,"r"); if(!pipe)return out;
+  while(fgets(buffer,sizeof(buffer),pipe))out+=buffer;
+  pclose(pipe);
+  while(!out.empty()&&(out.back()=='\n'||out.back()=='\r'))out.pop_back();
+  return out;
+}
+
+static std::string last_voice_event() {
+  std::ifstream in(voice_log); std::string line,last;
+  while(std::getline(in,line))if(line.find("recognized:")!=std::string::npos||line.find("triggered:")!=std::string::npos)last=line;
+  return last;
+}
 
 static std::string json_escape(const std::string &s) {
   std::ostringstream o;
@@ -163,6 +179,13 @@ int main() {
       std::lock_guard<std::mutex> lk(controller_mutex);
       const bool replaying = teaching && teaching->get_state() == onero_api::DragTeachingState::REPLAYING;
       reply(c,200,"application/json",std::string("{\"ok\":true,\"arm\":\"")+arm_side+"\",\"mode\":\"teaching\",\"recording\":"+(recording_name.empty()?"false":"true")+",\"replaying\":"+(replaying?"true":"false")+",\"actions\":"+action_list_json()+"}");
+    } else if(method=="GET"&&path=="/api/voice/status") {
+      const bool active=command_output("systemctl --user is-active robot-voice.service 2>/dev/null")=="active";
+      reply(c,200,"application/json",std::string("{\"ok\":true,\"active\":")+(active?"true":"false")+",\"phrase\":\"动作库名称\",\"action\":\"右臂 · 动态匹配\",\"lastEvent\":\""+json_escape(last_voice_event())+"\"}");
+    } else if(method=="POST"&&(path=="/api/voice/start"||path=="/api/voice/stop")) {
+      const bool start=path=="/api/voice/start";
+      const int rc=std::system(start?"systemctl --user start robot-voice.service":"systemctl --user stop robot-voice.service");
+      reply(c,rc?500:200,"application/json",rc?fail("语音服务切换失败"):std::string("{\"ok\":true,\"message\":\"语音控制已")+(start?"启用":"停用")+"\"}");
     } else if(method=="GET"&&path.rfind("/api/pose",0)==0) {
       std::lock_guard<std::mutex> lk(controller_mutex); std::string err;
       if(!spatial_enabled) reply(c,409,"application/json",fail("三维末端控制尚未开启"));
