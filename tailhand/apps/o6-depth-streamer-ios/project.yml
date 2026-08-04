@@ -1,0 +1,55 @@
+name: O6DepthStreamer
+options:
+  bundleIdPrefix: com.duamixu.tailhand
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  O6DepthStreamer:
+    type: application
+    platform: iOS
+    sources:
+      - path: O6DepthStreamer
+    info:
+      path: O6DepthStreamer/Resources/Info.plist
+      properties:
+        NSCameraUsageDescription: "采集彩色画面和 LiDAR 深度，用于 O6 机械手近距离抓取。"
+        NSLocalNetworkUsageDescription: "在同一 Wi-Fi 中发现 Mac 并发送 RGB-D 数据。"
+        NSBonjourServices:
+          - _o6depth._tcp
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities:
+          - arm64
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.duamixu.tailhand.O6DepthStreamer
+        PRODUCT_NAME: O6DepthStreamer
+  O6DepthStreamerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: O6DepthStreamerTests
+    dependencies:
+      - target: O6DepthStreamer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.duamixu.tailhand.O6DepthStreamerTests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  O6DepthStreamer:
+    build:
+      targets:
+        O6DepthStreamer: all
+        O6DepthStreamerTests: [test]
+    test:
+      targets:
+        - O6DepthStreamerTests

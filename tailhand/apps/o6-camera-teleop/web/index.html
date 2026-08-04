@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>LinkerHand O6 视觉控制台</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="identity">
+        <span class="mark" aria-hidden="true">O6</span>
+        <div>
+          <h1>LinkerHand O6</h1>
+          <p>视觉控制台</p>
+        </div>
+      </div>
+      <div class="top-status" aria-live="polite">
+        <span id="modeBadge" class="badge neutral">启动中</span>
+        <span id="connectionDot" class="status-dot"></span>
+        <span id="connectionText">正在连接运行层</span>
+      </div>
+    </header>
+
+    <main class="console-layout">
+      <section class="camera-workspace" aria-labelledby="cameraTitle">
+        <div class="section-bar">
+          <div>
+            <span class="eyebrow">实时输入</span>
+            <h2 id="cameraTitle">Mac 摄像头</h2>
+          </div>
+          <div class="stream-metrics">
+            <span><b id="fpsValue">0.0</b> FPS</span>
+            <span><b id="objectCount">0</b> <span id="metricUnit">物品</span></span>
+            <span id="handState">未检测到手</span>
+          </div>
+        </div>
+
+        <div id="streamGrid" class="stream-grid single-source">
+          <figure class="stream-figure">
+            <figcaption class="stream-caption">
+              <span>RGB 识别</span>
+              <strong id="rgbSourceLabel">Mac 摄像头</strong>
+            </figcaption>
+            <div class="video-stage">
+              <img id="cameraFeed" src="/video_feed" alt="实时摄像头与视觉识别叠加画面">
+              <div class="video-state">
+                <span id="stateLabel" class="state-label">未布防</span>
+                <span id="targetLabel">目标：无</span>
+              </div>
+              <div id="cameraError" class="camera-error" hidden>
+                <strong id="cameraErrorTitle">摄像头画面不可用</strong>
+                <span id="cameraErrorDetail">检查 macOS 摄像头权限，或确认没有其他程序占用摄像头。</span>
+              </div>
+            </div>
+          </figure>
+
+          <figure id="depthPanel" class="stream-figure depth-panel" hidden>
+            <figcaption class="stream-caption">
+              <span>深度伪彩</span>
+              <span class="depth-readout" aria-live="polite">
+                <strong id="depthDistance">---</strong>
+                <span id="depthPhase" class="depth-phase">等待深度</span>
+              </span>
+            </figcaption>
+            <div class="video-stage depth-stage">
+              <img id="depthFeed" src="/depth_feed" data-src="/depth_feed" alt="iPhone LiDAR 深度伪彩与采样区域">
+              <div id="depthError" class="camera-error" hidden>
+                <strong>深度画面不可用</strong>
+                <span>等待 iPhone LiDAR 数据流。</span>
+              </div>
+            </div>
+          </figure>
+        </div>
+
+        <div class="recognition-strip">
+          <div>
+            <span id="progressLabel">目标稳定度</span>
+            <strong id="stableText">0 / 8</strong>
+          </div>
+          <div class="progress-track" aria-label="目标稳定度">
+            <span id="stableProgress"></span>
+          </div>
+          <div class="safety-result">
+            <span id="safetyDot" class="status-dot"></span>
+            <strong id="safetyText">等待视觉运行层</strong>
+          </div>
+        </div>
+      </section>
+
+      <aside class="control-rail" aria-label="O6 控制与状态">
+        <section class="control-section">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">控制模式</span>
+              <h2>运行模式</h2>
+            </div>
+            <span id="commandCount" class="command-count">0 条指令</span>
+          </div>
+          <div class="device-selector">
+            <span>O6 设备</span>
+            <div class="device-switch" role="group" aria-label="O6 左右手设备">
+              <button id="leftHandButton" class="device-button" data-action="hand-left" type="button">左手</button>
+              <button id="rightHandButton" class="device-button" data-action="hand-right" type="button">右手</button>
+            </div>
+          </div>
+          <div class="mode-switch" role="group" aria-label="控制模式">
+            <button id="handModeButton" class="mode-button" data-action="mode-hand" type="button">手势跟随</button>
+            <button id="objectModeButton" class="mode-button" data-action="mode-object" type="button">物品抓取</button>
+          </div>
+          <div id="handActions" class="action-grid" hidden>
+            <button id="followEnableButton" class="button primary" data-action="follow-enable" type="button">启用跟随</button>
+            <button id="followPauseButton" class="button secondary" data-action="follow-pause" type="button">暂停跟随</button>
+          </div>
+          <div id="objectActions">
+            <div id="objectSourceControls" class="source-selector">
+              <span>视觉来源</span>
+              <div class="source-switch" role="group" aria-label="物品模式视觉来源">
+                <button id="macSourceButton" class="source-button" data-action="source-mac-camera" type="button">Mac 摄像头</button>
+                <button id="recameraSourceButton" class="source-button" data-action="source-recamera" type="button">reCamera</button>
+                <button id="iphoneSourceButton" class="source-button" data-action="source-iphone-lidar" type="button">iPhone LiDAR</button>
+              </div>
+            </div>
+            <div id="lidarActions" class="action-grid lidar-actions" hidden>
+              <button id="calibrateDepthButton" class="button secondary" data-action="depth-calibrate-contact" type="button">记录 0 cm</button>
+              <button id="clearDepthButton" class="button secondary" data-action="depth-clear-calibration" type="button">清除标定</button>
+            </div>
+            <div id="automaticGraspActions" class="action-grid">
+              <button id="armButton" class="button primary" data-action="arm" type="button">布防识别</button>
+              <button id="disarmButton" class="button secondary" data-action="disarm" type="button">解除布防</button>
+            </div>
+            <div id="recameraActions" class="action-grid single-action" hidden>
+              <button id="manualGraspButton" class="button primary" data-action="manual-grasp" type="button">保守握合</button>
+            </div>
+          </div>
+          <div id="commonActions" class="action-grid common-actions">
+            <button id="openButton" class="button open" data-action="open" type="button">安全张开</button>
+            <button id="stopButton" class="button danger" data-action="stop" type="button">紧急停止</button>
+          </div>
+          <p id="eventMessage" class="event-message">正在初始化摄像头与视觉模型</p>
+        </section>
+
+        <section class="control-section channels-section">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">输出监视</span>
+              <h2 id="channelTitle">O6 六维位置</h2>
+            </div>
+            <span class="range-label">0–255</span>
+          </div>
+          <div id="channelList" class="channel-list"></div>
+        </section>
+
+        <section class="control-section diagnostics-section">
+          <span class="eyebrow">运行诊断</span>
+          <dl class="diagnostics">
+            <div><dt>后端</dt><dd id="backendValue">starting</dd></div>
+            <div><dt>硬件连接</dt><dd id="hardwareValue">否</dd></div>
+            <div><dt>O6 设备</dt><dd id="deviceValue">---</dd></div>
+            <div><dt>摄像头</dt><dd id="cameraValue">初始化中</dd></div>
+            <div><dt id="diagnosticLabel">抓取目标</dt><dd id="diagnosticTarget">无</dd></div>
+          </dl>
+          <div id="lidarDiagnostics" hidden>
+            <dl class="diagnostics lidar-diagnostics">
+              <div><dt>iPhone</dt><dd id="iphoneState">等待连接</dd></div>
+              <div><dt>设备</dt><dd id="iphoneDevice">---</dd></div>
+              <div><dt>配对码</dt><dd id="pairingCode" class="pairing-code">------</dd></div>
+              <div><dt>深度流</dt><dd id="depthStreamState">0.0 FPS / --- ms</dd></div>
+              <div><dt>有效深度</dt><dd id="depthValidRatio">0%</dd></div>
+              <div><dt>接触面</dt><dd id="contactDepth">未标定</dd></div>
+              <div><dt>有符号距离</dt><dd id="diagnosticDepthDistance">---</dd></div>
+              <div><dt>深度阶段</dt><dd id="diagnosticDepthPhase">等待深度</dd></div>
+            </dl>
+          </div>
+          <div id="recameraDiagnostics" hidden>
+            <dl class="diagnostics recamera-diagnostics">
+              <div><dt>RTSP</dt><dd id="recameraState">等待连接</dd></div>
+              <div><dt>视频流</dt><dd id="recameraStreamState">0.0 FPS / --- ms</dd></div>
+              <div><dt>设备地址</dt><dd id="recameraAddress">192.168.254.153</dd></div>
+            </dl>
+          </div>
+          <p id="fallbackReason" class="fallback" hidden></p>
+        </section>
+      </aside>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

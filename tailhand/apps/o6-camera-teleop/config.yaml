@@ -1,0 +1,75 @@
+o6:
+  hand_type: left
+  hand_joint: O6
+  dry_run: true
+  backend: auto
+  sdk_path: third_party/linkerhand-python-sdk
+  can_channel: PCAN_USBBUS1
+  modbus: "None"
+  speed: [50, 50, 50, 50, 50, 50]
+  safe_open_pose: [250, 250, 250, 250, 250, 250]
+  channels:
+    thumb_flexion: {open: 250, closed: 102}
+    thumb_abduction: {min: 18, max: 250}
+    index_flexion: {open: 250, closed: 0}
+    middle_flexion: {open: 250, closed: 0}
+    ring_flexion: {open: 250, closed: 0}
+    pinky_flexion: {open: 250, closed: 0}
+
+vision:
+  model_path: models/hand_landmarker.task
+  mirror_display: true
+  detection_confidence: 0.5
+  presence_confidence: 0.5
+  tracking_confidence: 0.5
+
+control:
+  command_hz: 20
+  ema_alpha: 0.25
+  deadband: 3
+  max_delta_per_command: 12
+  lost_hand_timeout_ms: 500
+
+recamera:
+  enabled: true
+  rtsp_url: rtsp://admin:admin@192.168.254.153:554/live
+  reconnect_interval_ms: 1000
+  stale_timeout_ms: 1500
+
+iphone_lidar:
+  enabled: true
+  bind_host: 0.0.0.0
+  port: 8766
+  service_name: _o6depth._tcp
+  target_fps: 15
+  max_fps: 20
+  max_message_bytes: 1572864
+  stream_timeout_ms: 500
+  min_confidence: medium
+  min_valid_depth_ratio: 0.20
+  roi_inner_ratio: 0.50
+  open_threshold_mm: 50
+  contact_threshold_mm: 0
+  contact_stable_frames: 8
+  contact_depth_mm: null
+
+object_grasp:
+  model_path: models/efficientdet_lite0_int8.tflite
+  score_threshold: 0.45
+  max_results: 5
+  category_denylist: [person, chair, couch, dining table, laptop, tv]
+  detector_hz: 10
+  grasp_zone: [0.25, 0.20, 0.62, 0.80]
+  min_box_area_ratio: 0.01
+  max_box_area_ratio: 0.40
+  stable_frames: 8
+  center_tolerance: 0.08
+  auto_arm: false
+  grasp_pose: [110, 35, 55, 55, 55, 55]
+  foreground_pixel_threshold: 30
+  foreground_min_area_ratio: 0.015
+  foreground_max_changed_ratio: 0.65
+
+calibration:
+  geometry_open: null
+  geometry_closed: null
