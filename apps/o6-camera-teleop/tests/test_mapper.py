@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+import web_console
 
 from control.filters import CommandFilter
 from control.console_mode import ConsoleMode, ConsoleModeState, TrackingState, VisionSource
@@ -8,7 +9,7 @@ from control.grasp_state import GraspState, GraspStateMachine, TargetObservation
 from control.hand_mapper import CHANNEL_ORDER, HandMapper
 from control.o6_controller import _resolve_can_id
 from vision.foreground_detector import ForegroundDetector
-from web_console import ALLOWED_ACTIONS, create_app
+from web_console import ALLOWED_ACTIONS, WebConsoleRuntime, create_app
 
 
 CHANNELS = {
@@ -22,6 +23,59 @@ CHANNELS = {
 
 
 class MapperAndFilterTest(unittest.TestCase):
+    def test_fist_pose_uses_active_hand_mapping(self):
+        mapper = HandMapper(CHANNELS)
+
+        self.assertEqual(
+            web_console._fist_pose(mapper, "right"),
+            [20, 30, 20, 20, 20, 20],
+        )
+        self.assertEqual(
+            web_console._fist_pose(mapper, "left"),
+            [20, 220, 20, 20, 20, 20],
+        )
+
+    def test_fist_action_pauses_follow_and_moves_once(self):
+        class RecordingController:
+            emergency_stopped = False
+
+            def __init__(self):
+                self.moves = []
+                self.config = {"hand_type": "right"}
+
+            def move(self, pose):
+                self.moves.append(pose.copy())
+
+        runtime = object.__new__(WebConsoleRuntime)
+        events = {}
+        runtime._set_status = lambda **values: events.update(values)
+        mode_state = ConsoleModeState()
+        mode_state.switch(ConsoleMode.HAND_FOLLOW)
+        mode_state.enable_follow(emergency_stopped=False)
+        controller = RecordingController()
+        hand_filter = CommandFilter(ema_alpha=0.25, deadband=3, max_delta=12)
+        expected_fist_pose = [20, 30, 20, 20, 20, 20]
+
+        changed_pose = runtime._apply_action(
+            action="fist",
+            frame=None,
+            mode_state=mode_state,
+            machine=None,
+            foreground=None,
+            controller=controller,
+            hand_filter=hand_filter,
+            grasp_filter=None,
+            depth_gate=None,
+            calibrator=None,
+            safe_open=[255] * 6,
+            hand_mapper=HandMapper(CHANNELS),
+        )
+
+        self.assertFalse(mode_state.follow_enabled)
+        self.assertEqual(controller.moves, [expected_fist_pose])
+        self.assertEqual(changed_pose, expected_fist_pose)
+        self.assertIn("已暂停跟随并执行一键握拳", events["last_event"])
+
     def test_legacy_console_mode_state_positional_arguments_are_preserved(self):
         state = ConsoleModeState(ConsoleMode.HAND_FOLLOW, True, TrackingState.TRACKING, 1.0)
 
@@ -173,6 +227,7 @@ class MapperAndFilterTest(unittest.TestCase):
                 "mode-object",
                 "follow-enable",
                 "follow-pause",
+                "fist",
                 "hand-left",
                 "hand-right",
             }
@@ -197,6 +252,7 @@ class MapperAndFilterTest(unittest.TestCase):
                     "mode-object",
                     "follow-enable",
                     "follow-pause",
+                    "fist",
                     "hand-left",
                     "hand-right",
                 }
@@ -220,6 +276,7 @@ class MapperAndFilterTest(unittest.TestCase):
             "mode-object",
             "follow-enable",
             "follow-pause",
+            "fist",
             "hand-left",
             "hand-right",
         ):
@@ -229,6 +286,65 @@ class MapperAndFilterTest(unittest.TestCase):
         response = client.post("/api/action", json={"action": "unknown"})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["accepted"], False)
+
+    def test_web_assets_expose_tail3_shell_and_real_controls(self):
+        class FakeRuntime:
+            def status_snapshot(self):
+                return {"state": "DISARMED", "backend": "dry-run", "pose": [250] * 6}
+
+            def enqueue_action(self, action):
+                return action in ALLOWED_ACTIONS
+
+            def mjpeg_stream(self):
+                return iter(())
+
+            def depth_mjpeg_stream(self):
+                return iter(())
+
+        client = create_app(FakeRuntime()).test_client()
+        responses = [
+            client.get("/"),
+            client.get("/assets/styles.css"),
+            client.get("/assets/app.js"),
+        ]
+        try:
+            html, css, javascript = [response.get_data(as_text=True) for response in responses]
+        finally:
+            for response in responses:
+                response.close()
+
+        for page in ("home", "gesture", "agent", "devices", "history", "settings"):
+            self.assertIn(f'id="page-{page}"', html)
+        self.assertIn('class="mobile-safety-dock"', html)
+        self.assertIn('data-src="/video_feed"', html)
+        self.assertIn('data-src="/depth_feed"', html)
+        self.assertIn('data-action="fist"', html)
+        self.assertIn("一键握拳", html)
+        self.assertIn("演示", html)
+        self.assertIn("@media", css)
+        self.assertIn("@keyframes toast-in", css)
+        self.assertIn(".button { min-height: 44px;", css)
+        self.assertIn(".gesture-action-grid", css)
+
+        for action in (
+            "hand-left",
+            "hand-right",
+            "mode-hand",
+            "mode-object",
+            "source-mac-camera",
+            "source-iphone-lidar",
+            "depth-calibrate-contact",
+            "depth-clear-calibration",
+            "follow-enable",
+            "follow-pause",
+            "fist",
+            "arm",
+            "disarm",
+            "open",
+            "stop",
+        ):
+            self.assertIn(f'"{action}"', javascript)
+        self.assertIn('WAITING_MODE', javascript)
 
 
 if __name__ == "__main__":

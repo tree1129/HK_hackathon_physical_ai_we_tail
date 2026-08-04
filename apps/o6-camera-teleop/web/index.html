@@ -2,179 +2,94 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="light">
-    <title>LinkerHand O6 视觉控制台</title>
+    <meta name="theme-color" content="#ffffff">
+    <title>LinkerHand O6 Control</title>
     <link rel="stylesheet" href="/assets/styles.css">
   </head>
   <body>
-    <header class="topbar">
-      <div class="identity">
-        <span class="mark" aria-hidden="true">O6</span>
-        <div>
-          <h1>LinkerHand O6</h1>
-          <p>视觉控制台</p>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <button class="brand" type="button" data-page-target="home">
+          <span class="brand-mark">O6</span>
+          <span><strong>LinkerHand</strong><small>Vision Control</small></span>
+        </button>
+        <nav class="nav-list">
+          <button class="nav-item active" type="button" data-page-target="home"><span class="nav-icon">⌂</span>控制中心</button>
+          <button class="nav-item" type="button" data-page-target="gesture"><span class="nav-icon">H</span>手势控制</button>
+          <button class="nav-item" type="button" data-page-target="agent"><span class="nav-icon">A</span>Agent</button>
+          <button class="nav-item" type="button" data-page-target="devices"><span class="nav-icon">D</span>设备与校准</button>
+          <button class="nav-item" type="button" data-page-target="history"><span class="nav-icon">R</span>任务记录</button>
+          <button class="nav-item" type="button" data-page-target="settings"><span class="nav-icon">S</span>设置</button>
+        </nav>
+        <div class="sidebar-footer">
+          <span id="sidebarConnectionDot" class="status-dot"></span>
+          <div><strong id="sidebarDeviceText">O6 连接中</strong><small id="sidebarBackendText">等待运行层</small></div>
         </div>
-      </div>
-      <div class="top-status" aria-live="polite">
-        <span id="modeBadge" class="badge neutral">启动中</span>
-        <span id="connectionDot" class="status-dot"></span>
-        <span id="connectionText">正在连接运行层</span>
-      </div>
-    </header>
-
-    <main class="console-layout">
-      <section class="camera-workspace" aria-labelledby="cameraTitle">
-        <div class="section-bar">
-          <div>
-            <span class="eyebrow">实时输入</span>
-            <h2 id="cameraTitle">Mac 摄像头</h2>
-          </div>
-          <div class="stream-metrics">
-            <span><b id="fpsValue">0.0</b> FPS</span>
-            <span><b id="objectCount">0</b> <span id="metricUnit">物品</span></span>
-            <span id="handState">未检测到手</span>
-          </div>
-        </div>
-
-        <div id="streamGrid" class="stream-grid single-source">
-          <figure class="stream-figure">
-            <figcaption class="stream-caption">
-              <span>RGB 识别</span>
-              <strong id="rgbSourceLabel">Mac 摄像头</strong>
-            </figcaption>
-            <div class="video-stage">
-              <img id="cameraFeed" src="/video_feed" alt="实时摄像头与视觉识别叠加画面">
-              <div class="video-state">
-                <span id="stateLabel" class="state-label">未布防</span>
-                <span id="targetLabel">目标：无</span>
-              </div>
-              <div id="cameraError" class="camera-error" hidden>
-                <strong id="cameraErrorTitle">摄像头画面不可用</strong>
-                <span id="cameraErrorDetail">检查 macOS 摄像头权限，或确认没有其他程序占用摄像头。</span>
-              </div>
-            </div>
-          </figure>
-
-          <figure id="depthPanel" class="stream-figure depth-panel" hidden>
-            <figcaption class="stream-caption">
-              <span>深度伪彩</span>
-              <span class="depth-readout" aria-live="polite">
-                <strong id="depthDistance">---</strong>
-                <span id="depthPhase" class="depth-phase">等待深度</span>
-              </span>
-            </figcaption>
-            <div class="video-stage depth-stage">
-              <img id="depthFeed" src="/depth_feed" data-src="/depth_feed" alt="iPhone LiDAR 深度伪彩与采样区域">
-              <div id="depthError" class="camera-error" hidden>
-                <strong>深度画面不可用</strong>
-                <span>等待 iPhone LiDAR 数据流。</span>
-              </div>
-            </div>
-          </figure>
-        </div>
-
-        <div class="recognition-strip">
-          <div>
-            <span id="progressLabel">目标稳定度</span>
-            <strong id="stableText">0 / 8</strong>
-          </div>
-          <div class="progress-track" aria-label="目标稳定度">
-            <span id="stableProgress"></span>
-          </div>
-          <div class="safety-result">
-            <span id="safetyDot" class="status-dot"></span>
-            <strong id="safetyText">等待视觉运行层</strong>
-          </div>
-        </div>
-      </section>
-
-      <aside class="control-rail" aria-label="O6 控制与状态">
-        <section class="control-section">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">控制模式</span>
-              <h2>运行模式</h2>
-            </div>
-            <span id="commandCount" class="command-count">0 条指令</span>
-          </div>
-          <div class="device-selector">
-            <span>O6 设备</span>
-            <div class="device-switch" role="group" aria-label="O6 左右手设备">
-              <button id="leftHandButton" class="device-button" data-action="hand-left" type="button">左手</button>
-              <button id="rightHandButton" class="device-button" data-action="hand-right" type="button">右手</button>
-            </div>
-          </div>
-          <div class="mode-switch" role="group" aria-label="控制模式">
-            <button id="handModeButton" class="mode-button" data-action="mode-hand" type="button">手势跟随</button>
-            <button id="objectModeButton" class="mode-button" data-action="mode-object" type="button">物品抓取</button>
-          </div>
-          <div id="handActions" class="action-grid" hidden>
-            <button id="followEnableButton" class="button primary" data-action="follow-enable" type="button">启用跟随</button>
-            <button id="followPauseButton" class="button secondary" data-action="follow-pause" type="button">暂停跟随</button>
-          </div>
-          <div id="objectActions">
-            <div id="objectSourceControls" class="source-selector">
-              <span>视觉来源</span>
-              <div class="source-switch" role="group" aria-label="自动抓取视觉来源">
-                <button id="macSourceButton" class="source-button" data-action="source-mac-camera" type="button">Mac 摄像头</button>
-                <button id="iphoneSourceButton" class="source-button" data-action="source-iphone-lidar" type="button">iPhone LiDAR</button>
-              </div>
-            </div>
-            <div id="lidarActions" class="action-grid lidar-actions" hidden>
-              <button id="calibrateDepthButton" class="button secondary" data-action="depth-calibrate-contact" type="button">记录 0 cm</button>
-              <button id="clearDepthButton" class="button secondary" data-action="depth-clear-calibration" type="button">清除标定</button>
-            </div>
-            <div class="action-grid">
-              <button id="armButton" class="button primary" data-action="arm" type="button">布防识别</button>
-              <button id="disarmButton" class="button secondary" data-action="disarm" type="button">解除布防</button>
-            </div>
-          </div>
-          <div id="commonActions" class="action-grid common-actions">
-            <button id="openButton" class="button open" data-action="open" type="button">安全张开</button>
-            <button id="stopButton" class="button danger" data-action="stop" type="button">紧急停止</button>
-          </div>
-          <p id="eventMessage" class="event-message">正在初始化摄像头与视觉模型</p>
-        </section>
-
-        <section class="control-section channels-section">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">输出监视</span>
-              <h2 id="channelTitle">O6 六维位置</h2>
-            </div>
-            <span class="range-label">0–255</span>
-          </div>
-          <div id="channelList" class="channel-list"></div>
-        </section>
-
-        <section class="control-section diagnostics-section">
-          <span class="eyebrow">运行诊断</span>
-          <dl class="diagnostics">
-            <div><dt>后端</dt><dd id="backendValue">starting</dd></div>
-            <div><dt>硬件连接</dt><dd id="hardwareValue">否</dd></div>
-            <div><dt>O6 设备</dt><dd id="deviceValue">---</dd></div>
-            <div><dt>摄像头</dt><dd id="cameraValue">初始化中</dd></div>
-            <div><dt id="diagnosticLabel">抓取目标</dt><dd id="diagnosticTarget">无</dd></div>
-          </dl>
-          <div id="lidarDiagnostics" hidden>
-            <dl class="diagnostics lidar-diagnostics">
-              <div><dt>iPhone</dt><dd id="iphoneState">等待连接</dd></div>
-              <div><dt>设备</dt><dd id="iphoneDevice">---</dd></div>
-              <div><dt>配对码</dt><dd id="pairingCode" class="pairing-code">------</dd></div>
-              <div><dt>深度流</dt><dd id="depthStreamState">0.0 FPS / --- ms</dd></div>
-              <div><dt>有效深度</dt><dd id="depthValidRatio">0%</dd></div>
-              <div><dt>接触面</dt><dd id="contactDepth">未标定</dd></div>
-              <div><dt>有符号距离</dt><dd id="diagnosticDepthDistance">---</dd></div>
-              <div><dt>深度阶段</dt><dd id="diagnosticDepthPhase">等待深度</dd></div>
-            </dl>
-          </div>
-          <p id="fallbackReason" class="fallback" hidden></p>
-        </section>
       </aside>
-    </main>
 
-    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+      <main class="main-content">
+        <header class="topbar">
+          <div class="page-heading"><span class="mobile-brand">O6</span><div><p id="pageEyebrow">LINKERHAND CONTROL</p><h1 id="pageTitle">控制中心</h1></div></div>
+          <div class="topbar-status" aria-live="polite">
+            <span id="modeBadge" class="badge neutral">启动中</span>
+            <span id="safetyBadge" class="system-status"><i class="status-dot"></i><span>等待状态</span></span>
+            <span id="connectionText">正在连接运行层</span>
+          </div>
+        </header>
+
+        <div class="page-stage">
+          <section class="page active" id="page-home">
+            <section class="hero-status panel">
+              <div><span id="homeReadiness" class="status-line"><i class="status-dot"></i><span>正在连接视觉运行层</span></span><h2>O6 视觉控制台</h2><p>同一个网址同时支持桌面与手机。真实运动状态由本机运行层确认，尚未接入的功能保留完整演示。</p></div>
+              <div class="metrics" aria-label="关键状态"><div><span>当前模式</span><strong id="homeMode">---</strong></div><div><span>摄像头</span><strong id="homeCamera">初始化中</strong></div><div><span>O6 设备</span><strong id="homeDevice">---</strong></div><div><span>命令数</span><strong id="homeCommands">0</strong></div></div>
+            </section>
+
+            <div class="mode-grid">
+              <article class="mode-card gesture-card"><div class="mode-head"><span class="mode-icon blue">H</span><span id="homeGestureState" class="quiet">等待状态</span></div><div><p class="section-label blue-text">DIRECT CONTROL</p><h2>手势同步控制</h2><p>摄像头识别人手并把六维姿态映射到 O6。跟随必须显式启用，丢手时由运行层停止下发。</p></div><div class="mode-preview hand-preview" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><span></span></div><button class="button primary blue" type="button" data-page-target="gesture">进入手势控制</button></article>
+              <article class="mode-card agent-card"><div class="mode-head"><span class="mode-icon purple">A</span><span class="demo-tag">部分演示</span></div><div><p class="section-label purple-text">OBJECT + AGENT</p><h2>Agent 与物品抓取</h2><p>目标识别、LiDAR 深度和抓取布防连接真实运行层；任务规划用于完整交互演示。</p></div><div class="mode-preview agent-preview" aria-hidden="true"><span>感知</span><i></i><span>计划</span><i></i><span>执行</span></div><button class="button primary purple" type="button" data-page-target="agent">进入 Agent 页面</button></article>
+            </div>
+
+            <div class="home-lower-grid">
+              <section class="panel section-panel"><div class="section-heading"><div><p class="section-label">SYSTEM READINESS</p><h2>运行前检查</h2></div><button class="text-button" type="button" data-page-target="devices">查看设备</button></div><div class="check-list"><div><i id="homeBackendDot" class="status-dot"></i><p><strong>视觉运行层</strong><small id="homeBackendDetail">正在连接</small></p><span id="homeBackendBadge" class="badge neutral">等待</span></div><div><i id="homeO6Dot" class="status-dot"></i><p><strong>O6 灵巧手</strong><small id="homeO6Detail">等待状态</small></p><span id="homeO6Badge" class="badge neutral">等待</span></div><div><i id="homeCameraDot" class="status-dot"></i><p><strong>视觉输入</strong><small id="homeCameraDetail">初始化中</small></p><span id="homeCameraBadge" class="badge neutral">等待</span></div><div><i id="homeIphoneDot" class="status-dot"></i><p><strong>iPhone LiDAR</strong><small id="homeIphoneDetail">等待接收器状态</small></p><span id="homeIphoneBadge" class="badge neutral">等待</span></div></div></section>
+              <section class="panel section-panel"><div class="section-heading"><div><p class="section-label">LAST ACTIVITY</p><h2>最近状态</h2></div><span class="demo-tag">演示记录</span></div><div class="recent-result"><span>✓</span><div><strong>手势同步测试：连续抓握</strong><p>今天 13:48 · 手势控制 · 32 秒</p></div></div><p id="homeLastEvent" class="event-note">正在初始化摄像头与视觉模型</p></section>
+            </div>
+          </section>
+
+          <section class="page" id="page-gesture">
+            <div class="workspace-grid">
+              <section class="panel visual-workspace"><div class="workspace-toolbar"><div><p class="section-label blue-text">LIVE INPUT</p><h2>手势识别</h2></div><div class="stream-metrics"><span><b id="gestureFps">0.0</b> FPS</span><span id="gestureHand">未检测到手</span></div></div><div class="video-stage"><img id="gestureFeed" data-video-feed data-src="/video_feed" alt="实时手势识别画面"><div class="video-state"><strong id="gestureStateLabel">等待运行层</strong><span id="gestureInputLabel">输入：无</span></div><div id="gestureCameraError" class="camera-error" hidden><strong>摄像头画面不可用</strong><span>请检查摄像头权限或设备占用。</span></div></div><div class="workspace-footer"><span id="gestureTracking">等待人手</span><span id="gestureCommandCount">0 条指令</span><span id="gestureSafety">跟随未启用</span></div></section>
+              <aside class="panel control-panel"><div class="section-heading"><div><p class="section-label blue-text">GESTURE STATUS</p><h2>动作映射</h2></div><span id="gestureReadyBadge" class="badge neutral">等待</span></div><label class="field-label">视觉来源</label><div class="segmented" role="group" aria-label="手势视觉来源"><button id="gestureMacSourceButton" class="real-control" data-action="source-mac-camera" type="button">Mac 相机</button><button id="gestureMobileSourceButton" class="real-control" data-action="source-mobile-camera" type="button">手机相机</button></div><div class="camera-capture"><video id="mobileCameraPreview" autoplay muted playsinline></video><div class="camera-buttons"><button id="startMobileCamera" class="button primary blue" type="button">启动手机相机</button><button id="switchMobileCamera" class="button secondary" type="button" disabled>切换镜头</button><button id="stopMobileCamera" class="button secondary" type="button" disabled>停止采集</button></div><p id="mobileCameraStatus">默认使用后置主摄</p></div><label class="field-label">O6 设备</label><div class="segmented" role="group" aria-label="O6 左右手"><button id="leftHandButton" data-action="hand-left" type="button">左手</button><button id="rightHandButton" data-action="hand-right" type="button">右手</button></div><div class="status-grid"><div><span>识别状态</span><strong id="gestureDetection">等待中</strong></div><div><span>跟随输出</span><strong id="gestureFollowStatus">未启用</strong></div><div><span>设备手型</span><strong id="gestureDeviceHand">---</strong></div></div><div class="action-grid gesture-action-grid"><button id="followEnableButton" class="button primary blue real-control" data-action="follow-enable" type="button">启用跟随</button><button id="followPauseButton" class="button secondary real-control" data-action="follow-pause" type="button">暂停跟随</button><button id="fistButton" class="button secondary fist real-control" data-action="fist" type="button">一键握拳</button></div><button class="button secondary full real-control" data-action="open" type="button">安全张开并复位</button><p id="gestureEvent" class="event-note">正在初始化</p><details open><summary>O6 六维位置 <small>0-255</small></summary><div id="channelList" class="channel-list"></div></details><details><summary>运行诊断 <small>真实状态</small></summary><dl class="diagnostics"><div><dt>后端</dt><dd id="backendValue">starting</dd></div><div><dt>硬件</dt><dd id="hardwareValue">否</dd></div><div><dt>摄像头</dt><dd id="cameraValue">初始化中</dd></div><div><dt>跟踪</dt><dd id="trackingValue">WAITING_HAND</dd></div></dl><p id="fallbackReason" class="fallback" hidden></p></details></aside>
+            </div>
+          </section>
+
+          <section class="page" id="page-agent">
+            <div class="workspace-grid">
+              <section class="panel visual-workspace"><div class="workspace-toolbar"><div><p class="section-label purple-text">LIVE PERCEPTION</p><h2 id="agentCameraTitle">物品抓取画面</h2></div><div class="stream-metrics"><span><b id="agentFps">0.0</b> FPS</span><span><b id="agentObjectCount">0</b> 个物品</span></div></div><div id="agentStreams" class="stream-grid single"><figure><figcaption><span>RGB 识别</span><strong id="rgbSourceLabel">Mac 摄像头</strong></figcaption><div class="video-stage"><img id="agentFeed" data-video-feed data-src="/video_feed" alt="物品识别画面"><div class="video-state"><strong id="agentStateLabel">未布防</strong><span id="agentTargetLabel">目标：无</span></div><div id="agentCameraError" class="camera-error" hidden><strong>RGB 画面不可用</strong><span>等待视觉运行层。</span></div></div></figure><figure id="depthPanel" hidden><figcaption><span>深度伪彩</span><strong id="depthDistance">---</strong></figcaption><div class="video-stage depth-stage"><img id="depthFeed" data-depth-feed data-src="/depth_feed" alt="iPhone LiDAR 深度画面"><div id="depthError" class="camera-error" hidden><strong>深度画面不可用</strong><span>等待 iPhone LiDAR 数据流。</span></div></div></figure></div><div class="recognition-strip"><div><span>目标稳定度</span><strong id="agentStableText">0 / 8</strong></div><div class="progress-track"><i id="agentStableProgress"></i></div><div><i id="agentSafetyDot" class="status-dot"></i><strong id="agentSafetyText">等待运行层</strong></div></div></section>
+              <aside class="panel control-panel"><div class="section-heading"><div><p class="section-label purple-text">REAL OBJECT CONTROL</p><h2>物品抓取</h2></div><span class="real-tag">真实接口</span></div><label class="field-label">视觉来源</label><div class="segmented source" role="group" aria-label="视觉来源"><button id="macSourceButton" data-action="source-mac-camera" type="button">Mac 摄像头</button><button id="mobileSourceButton" data-action="source-mobile-camera" type="button">手机相机</button><button id="iphoneSourceButton" data-action="source-iphone-lidar" type="button">iPhone LiDAR</button></div><div id="lidarSummary" class="lidar-summary" hidden><div><span>配对码</span><strong id="pairingCode">------</strong></div><div><span>iPhone</span><strong id="iphoneState">等待连接</strong></div><div><span>深度流</span><strong id="depthStreamState">0.0 FPS</strong></div><div><span>接触面</span><strong id="contactDepth">未标定</strong></div><p id="depthPhase">深度不可用</p><div class="action-grid"><button id="calibrateDepthButton" class="button secondary real-control" data-action="depth-calibrate-contact" type="button">记录 0 cm</button><button id="clearDepthButton" class="button secondary real-control" data-action="depth-clear-calibration" type="button">清除标定</button></div></div><div class="status-grid two"><div><span>抓取目标</span><strong id="agentTarget">无</strong></div><div><span>识别状态</span><strong id="agentGraspState">未布防</strong></div></div><div class="action-grid"><button id="armButton" class="button primary purple real-control" data-action="arm" type="button">布防识别</button><button id="disarmButton" class="button secondary real-control" data-action="disarm" type="button">解除布防</button></div><button class="button secondary full real-control" data-action="open" type="button">安全张开并复位</button><p id="agentEvent" class="event-note">正在初始化</p><div class="demo-divider"><span>Agent 任务编排</span><b class="demo-tag">演示模式</b></div><label class="field-label" for="agentTaskInput">任务描述</label><textarea id="agentTaskInput" rows="3">把桌面上的物品放进指定区域。</textarea><p class="demo-note">仅演示计划流程，不会下发额外硬件指令。</p><ol id="agentPlan" class="plan-list"><li class="current"><span>1</span><div><strong>确认抓取目标</strong><small>读取真实视觉结果</small></div></li><li><span>2</span><div><strong>生成安全计划</strong><small>演示步骤</small></div></li><li><span>3</span><div><strong>等待操作者确认</strong><small>不下发硬件指令</small></div></li><li><span>4</span><div><strong>验证任务结果</strong><small>演示时间线</small></div></li></ol><button id="agentDemoButton" class="button demo full" type="button">预览 Agent 计划</button></aside>
+            </div>
+          </section>
+
+          <section class="page" id="page-devices">
+            <div class="page-intro"><div><h2>设备状态与运行准备</h2><p>真实 O6、摄像头、LiDAR 与后端状态持续更新。</p></div><button id="refreshDevices" class="button secondary" type="button">刷新状态</button></div><div class="device-grid"><article class="device-card"><div><span class="device-icon">O6</span><span id="deviceO6Badge" class="badge neutral">等待</span></div><h3>O6 灵巧手</h3><p id="deviceO6Description">等待运行层。</p><dl><div><dt>设备</dt><dd id="deviceHandValue">---</dd></div><div><dt>指令</dt><dd id="deviceCommandValue">0</dd></div></dl></article><article class="device-card"><div><span class="device-icon">CAM</span><span id="deviceCameraBadge" class="badge neutral">等待</span></div><h3>Mac 摄像头</h3><p id="deviceCameraDescription">初始化视觉输入。</p><dl><div><dt>帧率</dt><dd id="deviceFpsValue">0.0 FPS</dd></div><div><dt>状态</dt><dd id="deviceCameraState">初始化</dd></div></dl></article><article class="device-card"><div><span class="device-icon">DEP</span><span id="deviceIphoneBadge" class="badge neutral">等待</span></div><h3>iPhone LiDAR</h3><p id="deviceIphoneDescription">等待局域网深度流。</p><dl><div><dt>设备</dt><dd id="deviceIphoneName">---</dd></div><div><dt>帧率</dt><dd id="deviceDepthFps">0.0 FPS</dd></div></dl></article><article class="device-card demo-surface"><div><span class="device-icon">ARM</span><span class="demo-tag">演示</span></div><h3>A1 机械臂</h3><p>当前运行层未提供机械臂接口，保留完整设备位置。</p><dl><div><dt>连接</dt><dd>未接入</dd></div><div><dt>姿态</dt><dd>演示值</dd></div></dl></article></div><div class="devices-lower-grid"><section class="panel section-panel"><div class="section-heading"><div><p class="section-label">CALIBRATION</p><h2>校准状态</h2></div><span class="demo-tag">部分演示</span></div><div class="calibration-list"><div><span class="step real">实</span><p><strong>O6 安全张开</strong><small>调用真实 open action</small></p><button class="text-button real-control" data-action="open" type="button">执行</button></div><div><span class="step real">实</span><p><strong>LiDAR 接触面</strong><small id="deviceDepthCalibration">等待状态</small></p><button class="text-button" type="button" data-page-target="agent">查看</button></div><div><span class="step">演</span><p><strong>机械臂初始姿态</strong><small>等待后端接入</small></p><span class="demo-tag">演示</span></div></div></section><section class="panel section-panel"><div class="section-heading"><div><p class="section-label">RUNTIME</p><h2>运行诊断</h2></div><span id="deviceRuntimeBadge" class="badge neutral">等待</span></div><dl class="diagnostics large"><div><dt>后端类型</dt><dd id="deviceBackend">starting</dd></div><div><dt>视觉来源</dt><dd id="deviceVisionSource">---</dd></div><div><dt>局域网发布</dt><dd id="deviceBonjour">---</dd></div><div><dt>最近事件</dt><dd id="deviceLastEvent">初始化中</dd></div></dl></section></div>
+          </section>
+
+          <section class="page" id="page-history">
+            <div class="page-intro"><div><h2>任务与控制记录</h2><p>用于展示后续任务审计结构。</p></div><span class="demo-tag">演示数据</span></div><div class="history-layout"><section class="panel history-list"><button class="history-item active" data-history="gesture" type="button"><span class="history-icon blue">H</span><div><strong>手势同步测试：连续抓握</strong><small>今天 13:48 · 手势控制</small></div><span>32 秒</span></button><button class="history-item" data-history="object" type="button"><span class="history-icon purple">O</span><div><strong>识别并抓取桌面物品</strong><small>今天 11:26 · 物品抓取</small></div><span>8.7 秒</span></button><button class="history-item" data-history="lost" type="button"><span class="history-icon warning">!</span><div><strong>目标丢失安全停止</strong><small>昨天 18:05 · 安全事件</small></div><span>已停止</span></button></section><section class="panel history-detail"><div class="history-head"><div><span class="demo-tag">演示记录</span><h2 id="historyTitle">手势同步测试：连续抓握</h2><p id="historyMeta">今天 13:48 · 手势控制 · 32 秒</p></div><span class="badge success">已完成</span></div><div class="audit-grid"><div><span>控制模式</span><strong id="historyMode">手势跟随</strong></div><div><span>安全结果</span><strong id="historySafety">正常停止输出</strong></div></div><div class="timeline"><div><span>✓</span><p><strong>识别人手</strong><small>跟踪置信度达到阈值</small></p></div><div><span>✓</span><p><strong>启用控制</strong><small>操作者确认后开始映射</small></p></div><div><span>✓</span><p><strong>停止输出</strong><small>保持安全姿态</small></p></div></div></section></div>
+          </section>
+
+          <section class="page" id="page-settings">
+            <div class="page-intro"><div><h2>控制偏好与专家工具</h2><p>设置只保存在当前浏览器会话。</p></div><span class="demo-tag">演示设置</span></div><div class="settings-layout"><nav class="settings-tabs"><button class="active" data-settings-tab="general" type="button">通用</button><button data-settings-tab="safety" type="button">安全</button><button data-settings-tab="expert" type="button">专家工具</button></nav><section class="panel settings-content"><div class="settings-head"><div><p class="section-label">INTERFACE</p><h2>界面与控制偏好</h2><p>不会修改运行层配置。</p></div><div class="segmented interface-mode"><button class="selected" data-interface-mode="standard" type="button">标准</button><button data-interface-mode="expert" type="button">专家</button></div></div><div class="setting-row"><div><h3>默认控制页面</h3><p>打开控制台后优先显示</p></div><select><option>控制中心</option><option>手势控制</option><option>Agent</option></select></div><div class="setting-row"><div><h3>减少动画</h3><p>降低页面切换动画</p></div><label class="switch"><input type="checkbox"><span></span></label></div><div class="setting-row"><div><h3>安全提示</h3><p>持续显示风险和停止状态</p></div><label class="switch"><input type="checkbox" checked><span></span></label></div><div class="setting-row expert-only"><div><h3>原始诊断字段</h3><p>展示跟踪与回退原因</p></div><label class="switch"><input type="checkbox" checked><span></span></label></div><div class="settings-save"><span id="settingsSaveStatus">尚未保存本次更改</span><button id="saveSettings" class="button primary blue" type="button">保存演示设置</button></div></section></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <button id="desktopEmergency" class="emergency-stop real-control" data-action="stop" type="button"><span>■</span><div><strong>紧急停止</strong><small>立即锁定运动输出</small></div></button>
+    <div class="mobile-safety-dock"><button id="mobilePrimaryAction" class="mobile-primary" type="button">进入手势控制</button><button id="mobileEmergency" class="mobile-emergency real-control" data-action="stop" type="button">■ 急停</button></div>
+    <nav class="mobile-nav" aria-label="移动端导航"><button class="active" data-page-target="home" type="button"><b>⌂</b><small>首页</small></button><button data-page-target="gesture" type="button"><b>H</b><small>手势</small></button><button data-page-target="agent" type="button"><b>A</b><small>Agent</small></button><button data-page-target="devices" type="button"><b>D</b><small>设备</small></button><button data-page-target="history" type="button"><b>R</b><small>记录</small></button><button data-page-target="settings" type="button"><b>S</b><small>设置</small></button></nav>
+    <div id="toastRegion" class="toast-region" role="status" aria-live="polite"></div>
     <script src="/assets/app.js"></script>
   </body>
 </html>

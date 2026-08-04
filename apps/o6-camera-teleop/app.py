@@ -263,7 +263,10 @@ def run(args: argparse.Namespace) -> int:
             if detection is not None:
                 detected_frame_count += 1
                 last_detection_time = now
-                mapped_pose, raw_sample = mapper.map_landmarks(detection.geometry_landmarks)
+                mapped_pose, raw_sample = mapper.map_landmarks(
+                    detection.geometry_landmarks,
+                    hand_type=o6_config["hand_type"],
+                )
                 normalized_sample = mapper.apply_calibration(raw_sample)
                 last_pose = command_filter.apply(mapped_pose)
             else:

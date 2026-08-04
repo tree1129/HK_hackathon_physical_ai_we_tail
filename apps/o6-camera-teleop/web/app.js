@@ -16,6 +16,7 @@ const STATE_LABELS = {
   TRACKING: "手势跟随中",
   HOLDING_LAST: "短暂丢手",
   PAUSED_LOST: "丢手已停发",
+  WAITING_MODE: "等待切换",
 };
 
 const DEPTH_LABELS = {
@@ -25,283 +26,375 @@ const DEPTH_LABELS = {
   CONTACT_CONFIRMED: "接触面已确认",
 };
 
-const channelList = document.querySelector("#channelList");
-const toast = document.querySelector("#toast");
-let lastEvent = "";
-let toastTimer = null;
-let depthFeedActive = false;
+const REAL_ACTIONS = new Set([
+  "hand-left",
+  "hand-right",
+  "mode-hand",
+  "mode-object",
+  "source-mac-camera",
+  "source-mobile-camera",
+  "source-iphone-lidar",
+  "depth-calibrate-contact",
+  "depth-clear-calibration",
+  "follow-enable",
+  "follow-pause",
+  "fist",
+  "arm",
+  "disarm",
+  "open",
+  "stop",
+]);
 
-for (const [name, label] of Object.entries(CHANNEL_LABELS)) {
-  const row = document.createElement("div");
-  row.className = "channel-row";
-  row.dataset.channel = name;
-  row.innerHTML = `
-    <span class="channel-name" title="${name}">${label}</span>
-    <span class="channel-bar"><span></span></span>
-    <strong class="channel-value">---</strong>
-  `;
-  channelList.append(row);
-}
+const PAGE_META = {
+  home: ["控制中心", "LINKERHAND CONTROL"],
+  gesture: ["手势控制", "DIRECT CONTROL"],
+  agent: ["Agent 与物品抓取", "OBJECT + AGENT"],
+  devices: ["设备与校准", "DEVICES"],
+  history: ["任务记录", "HISTORY"],
+  settings: ["设置", "SETTINGS"],
+};
 
-function showToast(message) {
-  toast.textContent = message;
-  toast.hidden = false;
-  window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { toast.hidden = true; }, 2800);
-}
+const HISTORY = {
+  gesture: ["手势同步测试：连续抓握", "今天 13:48 · 手势控制 · 32 秒", "手势跟随", "正常停止输出"],
+  object: ["识别并抓取桌面物品", "今天 11:26 · 物品抓取 · 8.7 秒", "物品抓取", "完成后安全张开"],
+  lost: ["目标丢失安全停止", "昨天 18:05 · 安全事件 · 自动停止", "物品抓取", "目标丢失后停止"],
+};
+
+const state = { page: "home", online: false, status: null, lastEvent: "", demoStep: 0, demoTimer: null };
+const mobileCamera = { stream: null, active: false, facingMode: "environment", timer: null };
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function setText(selector, value) {
-  document.querySelector(selector).textContent = value;
+  const node = $(selector);
+  if (node) node.textContent = value;
+}
+
+function setBadge(node, label, tone = "neutral") {
+  if (!node) return;
+  node.textContent = label;
+  node.className = `badge ${tone}`;
+}
+
+function setDot(node, tone = "") {
+  if (node) node.className = `status-dot${tone ? ` ${tone}` : ""}`;
 }
 
 function finiteNumber(value) {
-  if (value == null || value === "") return null;
   const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+  return value == null || value === "" || !Number.isFinite(number) ? null : number;
 }
 
-function setDepthFeedActive(active) {
-  const feed = document.querySelector("#depthFeed");
-  const currentSource = feed.getAttribute("src");
-  if (active && currentSource !== feed.dataset.src) {
-    feed.src = feed.dataset.src;
-  } else if (!active && currentSource) {
-    feed.removeAttribute("src");
-  }
-  depthFeedActive = active;
+function showToast(title, message, tone = "success") {
+  const toast = document.createElement("div");
+  toast.className = `toast ${tone}`;
+  toast.innerHTML = `<strong>${title}</strong><span>${message}</span>`;
+  $("#toastRegion").append(toast);
+  window.setTimeout(() => toast.remove(), 3000);
 }
 
-function handLabel(handedness) {
-  if (handedness === "Left") return "左手";
-  if (handedness === "Right") return "右手";
+function handLabel(value) {
+  if (value === "Left") return "左手";
+  if (value === "Right") return "右手";
   return "人手";
 }
 
-function updateStatus(status) {
-  const mode = status.mode || "object-grasp";
-  const handMode = mode === "hand-follow";
-  const state = status.state || "DISARMED";
-  const stopped = Boolean(status.emergency_stopped);
-  const ready = Boolean(status.ready);
-  const handDetected = Boolean(status.hand_detected);
-  const followEnabled = Boolean(status.follow_enabled);
-  const trackingState = status.tracking_state || "WAITING_HAND";
-  const deviceHand = status.hand_type || "left";
-  const lidarSource = status.vision_source === "iphone-lidar";
-  const showLidar = !handMode && lidarSource;
-  const iphoneConnected = Boolean(status.iphone_connected);
-  const depthCalibrated = Boolean(status.depth_calibrated);
-  const depthRatioValue = finiteNumber(status.depth_valid_ratio);
-  const depthValidRatio = Math.max(0, Math.min(1, depthRatioValue || 0));
-  const signedDistance = finiteNumber(status.signed_distance_mm);
-  const contactDepth = finiteNumber(status.contact_depth_mm);
-  const depthFps = finiteNumber(status.depth_fps);
-  const depthLatency = finiteNumber(status.depth_latency_ms);
-  const depthPhaseKey = typeof status.depth_phase === "string" ? status.depth_phase : "DEPTH_UNAVAILABLE";
-  const depthPhaseLabel = DEPTH_LABELS[depthPhaseKey] || "等待深度";
-  const hasTarget = Boolean(status.target && status.target !== "无");
-  const hasValidDepthTarget = iphoneConnected && depthValidRatio > 0 && hasTarget;
-  const stateLabel = document.querySelector("#stateLabel");
-  stateLabel.textContent = stopped ? "急停锁定" : (STATE_LABELS[state] || state);
-  stateLabel.className = `state-label ${stopped ? "stopped" : state.toLowerCase()}`;
+function deviceLabel(value) {
+  return value === "right" ? "右手 / 0x27" : "左手 / 0x28";
+}
 
-  const handModeButton = document.querySelector("#handModeButton");
-  const objectModeButton = document.querySelector("#objectModeButton");
-  handModeButton.classList.toggle("selected", handMode);
-  objectModeButton.classList.toggle("selected", !handMode);
-  handModeButton.setAttribute("aria-pressed", String(handMode));
-  objectModeButton.setAttribute("aria-pressed", String(!handMode));
-  handModeButton.disabled = stopped || !ready || handMode;
-  objectModeButton.disabled = stopped || !ready || !handMode;
-  document.querySelector("#handActions").hidden = !handMode;
-  document.querySelector("#objectActions").hidden = handMode;
+function setFeed(node, active) {
+  if (!node) return;
+  const source = node.dataset.src;
+  if (active && node.getAttribute("src") !== source) node.setAttribute("src", source);
+  if (!active && node.getAttribute("src")) node.removeAttribute("src");
+}
 
-  const macSourceButton = document.querySelector("#macSourceButton");
-  const iphoneSourceButton = document.querySelector("#iphoneSourceButton");
-  macSourceButton.classList.toggle("selected", !lidarSource);
-  iphoneSourceButton.classList.toggle("selected", lidarSource);
-  macSourceButton.setAttribute("aria-pressed", String(!lidarSource));
-  iphoneSourceButton.setAttribute("aria-pressed", String(lidarSource));
-  macSourceButton.disabled = stopped || !ready || handMode || !lidarSource;
-  iphoneSourceButton.disabled = stopped || !ready || handMode || lidarSource;
-  document.querySelector("#lidarActions").hidden = !showLidar;
-  document.querySelector("#lidarDiagnostics").hidden = !showLidar;
-  document.querySelector("#depthPanel").hidden = !showLidar;
-  document.querySelector("#streamGrid").classList.toggle("single-source", !showLidar);
-  setDepthFeedActive(showLidar);
+function updateFeeds() {
+  const lidar = state.status?.vision_source === "iphone-lidar";
+  setFeed($("#gestureFeed"), state.page === "gesture");
+  setFeed($("#agentFeed"), state.page === "agent");
+  setFeed($("#depthFeed"), state.page === "agent" && lidar);
+}
 
-  setText("#cameraTitle", handMode ? "手势识别" : (showLidar ? "iPhone 腕部视角" : "Mac 摄像头"));
-  setText("#rgbSourceLabel", showLidar ? "iPhone RGB" : "Mac 摄像头");
-  setText("#pairingCode", String(status.pairing_code || "------"));
-  setText("#iphoneState", iphoneConnected ? "已连接" : "等待连接");
-  setText("#iphoneDevice", status.iphone_device || "---");
-  setText(
-    "#depthStreamState",
-    `${Math.max(0, depthFps || 0).toFixed(1)} FPS / ${depthLatency == null ? "---" : `${Math.max(0, depthLatency).toFixed(0)} ms`}`,
-  );
-  setText("#depthValidRatio", `${Math.round(depthValidRatio * 100)}%`);
-  setText("#contactDepth", depthCalibrated && contactDepth != null ? `${contactDepth.toFixed(1)} mm` : "未标定");
-  const distanceText = signedDistance == null ? "---" : `${signedDistance >= 0 ? "+" : ""}${signedDistance.toFixed(1)} mm`;
-  setText("#depthDistance", distanceText);
-  setText("#diagnosticDepthDistance", distanceText);
-  setText("#depthPhase", depthPhaseLabel);
-  setText("#diagnosticDepthPhase", depthPhaseLabel);
-  document.querySelector("#depthPhase").className = `depth-phase ${depthPhaseKey.toLowerCase()}`;
+function setPage(page) {
+  if (!PAGE_META[page]) return;
+  state.page = page;
+  $$(".page").forEach((node) => node.classList.toggle("active", node.id === `page-${page}`));
+  $$('[data-page-target]').forEach((node) => node.classList.toggle("active", node.dataset.pageTarget === page));
+  setText("#pageTitle", PAGE_META[page][0]);
+  setText("#pageEyebrow", PAGE_META[page][1]);
+  updateFeeds();
+  updateMobilePrimary();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
 
-  const leftHandButton = document.querySelector("#leftHandButton");
-  const rightHandButton = document.querySelector("#rightHandButton");
-  const leftDevice = deviceHand === "left";
-  leftHandButton.classList.toggle("selected", leftDevice);
-  rightHandButton.classList.toggle("selected", !leftDevice);
-  leftHandButton.setAttribute("aria-pressed", String(leftDevice));
-  rightHandButton.setAttribute("aria-pressed", String(!leftDevice));
-  leftHandButton.disabled = stopped || !ready || leftDevice;
-  rightHandButton.disabled = stopped || !ready || !leftDevice;
-
-  const modeBadge = document.querySelector("#modeBadge");
-  if (status.backend === "dry-run-fallback") {
-    modeBadge.textContent = "真机失败 / 已回退模拟";
-    modeBadge.className = "badge fallback";
-  } else if (status.dry_run) {
-    modeBadge.textContent = "模拟模式";
-    modeBadge.className = "badge simulation";
-  } else {
-    modeBadge.textContent = "真机模式";
-    modeBadge.className = "badge real";
+function setOnline(online) {
+  state.online = online;
+  document.body.classList.toggle("offline", !online);
+  if (!online) {
+    setDot($("#sidebarConnectionDot"), "danger");
+    setText("#sidebarDeviceText", "O6 离线");
+    setText("#sidebarBackendText", "无法连接运行层");
+    setText("#connectionText", "运行层离线");
+    const safety = $("#safetyBadge");
+    setDot($("i", safety), "danger");
+    $("span", safety).textContent = "连接异常";
   }
+  updateMobilePrimary();
+}
 
-  const connectionDot = document.querySelector("#connectionDot");
-  connectionDot.className = `status-dot ${ready ? "online" : "danger"}`;
-  setText("#connectionText", ready ? "视觉运行层在线" : "视觉运行层异常");
-  setText("#fpsValue", Number(status.fps || 0).toFixed(1));
-  setText("#objectCount", handMode ? (handDetected ? 1 : 0) : (status.objects || 0));
-  setText("#metricUnit", handMode ? "只手" : "物品");
-  setText("#handState", handDetected ? `已识别${handLabel(status.handedness)}` : "未检测到手");
-  setText("#progressLabel", handMode ? "手部识别" : "目标稳定度");
-  document.querySelector(".progress-track").setAttribute(
-    "aria-label",
-    handMode ? "手部识别" : "目标稳定度",
-  );
-  setText("#diagnosticLabel", handMode ? "手势输入" : "抓取目标");
-  if (handMode) {
-    const handDetail = handDetected
-      ? `${handLabel(status.handedness)} / ${Number(status.hand_score || 0).toFixed(2)}`
-      : "无";
-    setText("#targetLabel", `输入：${handDetail}`);
-    setText("#diagnosticTarget", handDetail);
-    setText("#stableText", handDetected ? "已识别" : "等待中");
-  } else {
-    setText("#targetLabel", `目标：${status.target || "无"}`);
-    setText("#diagnosticTarget", status.target ? `${status.target} / ${Number(status.target_score || 0).toFixed(2)}` : "无");
-    setText("#stableText", `${status.stable_count || 0} / ${status.stable_frames || 0}`);
-  }
-  const stableMax = Math.max(1, Number(status.stable_frames || 1));
-  document.querySelector("#stableProgress").style.width = `${Math.min(100, Number(status.stable_count || 0) / stableMax * 100)}%`;
-
-  const safetyDot = document.querySelector("#safetyDot");
-  let safetyText = handMode ? "跟随未启用" : "区域安全，可布防";
-  let safetyClass = "online";
-  if (stopped) {
-    safetyText = "急停锁定，停止下发";
-    safetyClass = "danger";
-  } else if (showLidar && !iphoneConnected && (state === "CLOSING" || state === "HOLDING")) {
-    safetyText = "深度断流，保持当前姿态";
-    safetyClass = "danger";
-  } else if (showLidar && !iphoneConnected) {
-    safetyText = "iPhone LiDAR 未连接";
-    safetyClass = "danger";
-  } else if (showLidar && !depthCalibrated) {
-    safetyText = "等待 0 cm 接触面标定";
-    safetyClass = "warning";
-  } else if (showLidar && depthPhaseKey === "DEPTH_UNAVAILABLE") {
-    safetyText = "深度不可用，禁止闭合";
-    safetyClass = "danger";
-  } else if (!status.camera_ok) {
-    safetyText = "摄像头不可用";
-    safetyClass = "warning";
-  } else if (handMode && !followEnabled) {
-    safetyText = handDetected ? "已识别人手，跟随未启用" : "等待人手，跟随未启用";
-    safetyClass = "warning";
-  } else if (handMode && trackingState === "TRACKING") {
-    safetyText = "手势跟随中，正在限速下发";
-  } else if (handMode && trackingState === "HOLDING_LAST") {
-    safetyText = "短暂丢手，保持最后姿态";
-    safetyClass = "warning";
-  } else if (handMode && trackingState === "PAUSED_LOST") {
-    safetyText = "丢手超过时限，已经停止下发";
-    safetyClass = "danger";
-  } else if (handMode) {
-    safetyText = "跟随已启用，等待识别人手";
-    safetyClass = "warning";
-  } else if (status.hand_blocked) {
-    safetyText = "手进入抓取区域，禁止闭合";
-    safetyClass = "danger";
-  } else if (state === "CLOSING") {
-    safetyText = "正在按限速闭合";
-    safetyClass = "warning";
-  } else if (state === "HOLDING") {
-    safetyText = "已保持抓取，等待张开";
-  } else if (state === "ARMED") {
-    if (showLidar && depthPhaseKey === "OUTSIDE_OPEN_ZONE") {
-      safetyText = "目标仍在 5 cm 外";
-    } else if (showLidar && depthPhaseKey === "PREGRASP_OPEN") {
-      safetyText = "目标接近，保持张开";
-      safetyClass = "warning";
-    } else if (showLidar && depthPhaseKey === "CONTACT_CONFIRMED") {
-      safetyText = "接触面已确认，等待稳定计数";
+function updateMobilePrimary() {
+  const button = $("#mobilePrimaryAction");
+  const status = state.status || {};
+  button.className = "mobile-primary";
+  button.dataset.action = "";
+  button.disabled = false;
+  if (state.page === "home") button.textContent = "进入手势控制";
+  if (state.page === "gesture") {
+    if (status.mode !== "hand-follow") {
+      button.textContent = "切换至手势模式";
+      button.dataset.action = "mode-hand";
     } else {
-      safetyText = "已布防，等待稳定目标";
+      button.textContent = status.follow_enabled ? "暂停跟随" : "启用跟随";
+      button.dataset.action = status.follow_enabled ? "follow-pause" : "follow-enable";
     }
+    button.disabled = !state.online || Boolean(status.emergency_stopped);
   }
-  safetyDot.className = `status-dot ${safetyClass}`;
-  setText("#safetyText", safetyText);
-  setText("#commandCount", `${status.commands || 0} 条指令`);
-  setText("#channelTitle", handMode && !followEnabled ? "六维映射预览" : "O6 六维位置");
+  if (state.page === "agent") {
+    button.classList.add("agent");
+    if (status.mode !== "object-grasp") {
+      button.textContent = "切换至物品模式";
+      button.dataset.action = "mode-object";
+    } else if (status.state === "ARMED") {
+      button.textContent = "解除布防";
+      button.dataset.action = "disarm";
+    } else if (["CLOSING", "HOLDING"].includes(status.state)) {
+      button.textContent = "安全张开";
+      button.dataset.action = "open";
+    } else {
+      button.textContent = "布防识别";
+      button.dataset.action = "arm";
+    }
+    button.disabled = !state.online || Boolean(status.emergency_stopped);
+  }
+  if (state.page === "devices") { button.classList.add("neutral"); button.textContent = "刷新设备状态"; }
+  if (state.page === "history") { button.classList.add("neutral"); button.textContent = "查看最近记录"; }
+  if (state.page === "settings") { button.classList.add("neutral"); button.textContent = "保存演示设置"; }
+}
+
+function backendBadge(status) {
+  if (status.backend === "dry-run-fallback") return ["真机失败 / 模拟回退", "fallback"];
+  if (status.dry_run) return ["模拟模式", "simulation"];
+  return ["真机模式", "real"];
+}
+
+function renderGlobal(status) {
+  const [modeText, modeTone] = backendBadge(status);
+  setBadge($("#modeBadge"), modeText, modeTone);
+  setDot($("#sidebarConnectionDot"), status.ready ? "online" : "danger");
+  setText("#sidebarDeviceText", status.connected ? "O6 已连接" : (status.dry_run ? "O6 模拟连接" : "O6 未连接"));
+  setText("#sidebarBackendText", status.backend || "unknown");
+  setText("#connectionText", status.ready ? "视觉运行层在线" : "视觉运行层异常");
+  let safetyText = "系统未布防";
+  let safetyTone = "online";
+  if (status.emergency_stopped) { safetyText = "急停锁定"; safetyTone = "danger"; }
+  else if (!status.camera_ok) { safetyText = "摄像头异常"; safetyTone = "warning"; }
+  else if (status.mode === "hand-follow" && status.follow_enabled) safetyText = "跟随已启用";
+  else if (status.mode === "object-grasp" && status.state === "ARMED") { safetyText = "抓取已布防"; safetyTone = "warning"; }
+  const safety = $("#safetyBadge");
+  setDot($("i", safety), safetyTone);
+  $("span", safety).textContent = safetyText;
+  document.body.classList.toggle("emergency-locked", Boolean(status.emergency_stopped));
+  $("#desktopEmergency").classList.toggle("locked", Boolean(status.emergency_stopped));
+  setText("#desktopEmergency strong", status.emergency_stopped ? "急停已锁定" : "紧急停止");
+}
+
+function renderHome(status) {
+  const ready = Boolean(status.ready);
+  setDot($("#homeReadiness i"), ready ? "online" : "danger");
+  setText("#homeReadiness span", ready ? "视觉运行层已连接，可进入控制" : "视觉运行层异常，控制已停用");
+  setText("#homeMode", status.mode === "hand-follow" ? "手势跟随" : "物品抓取");
+  setText("#homeCamera", status.camera_ok ? "正常" : "不可用");
+  setText("#homeDevice", status.connected ? "真机" : (status.dry_run ? "模拟" : "未连接"));
+  setText("#homeCommands", String(status.commands || 0));
+  setText("#homeGestureState", status.mode === "hand-follow" ? (status.follow_enabled ? "跟随已启用" : "等待启用") : "可切换进入");
+  setText("#homeLastEvent", status.last_event || "等待运行事件");
+  setDot($("#homeBackendDot"), ready ? "online" : "danger");
+  setText("#homeBackendDetail", status.backend || "unknown");
+  setBadge($("#homeBackendBadge"), ready ? "在线" : "异常", ready ? "success" : "danger");
+  setDot($("#homeO6Dot"), status.connected || status.dry_run ? "online" : "warning");
+  setText("#homeO6Detail", `${deviceLabel(status.hand_type)} · ${status.backend || "unknown"}`);
+  setBadge($("#homeO6Badge"), status.connected ? "已连接" : (status.dry_run ? "模拟" : "未连接"), status.connected ? "success" : (status.dry_run ? "simulation" : "warning"));
+  setDot($("#homeCameraDot"), status.camera_ok ? "online" : "danger");
+  setText("#homeCameraDetail", status.camera_ok ? `${Number(status.fps || 0).toFixed(1)} FPS` : "摄像头不可用");
+  setBadge($("#homeCameraBadge"), status.camera_ok ? "正常" : "异常", status.camera_ok ? "success" : "danger");
+  setDot($("#homeIphoneDot"), status.iphone_connected ? "online" : "warning");
+  setText("#homeIphoneDetail", status.iphone_connected ? `${status.iphone_device || "iPhone"} · ${Number(status.depth_fps || 0).toFixed(1)} FPS` : "接收器在线，等待 iPhone");
+  setBadge($("#homeIphoneBadge"), status.iphone_connected ? "已连接" : "待连接", status.iphone_connected ? "success" : "warning");
+}
+
+function renderGesture(status) {
+  const tracking = status.tracking_state || "WAITING_HAND";
+  const detected = Boolean(status.hand_detected);
+  setText("#gestureFps", Number(status.fps || 0).toFixed(1));
+  setText("#gestureHand", detected ? `已识别${handLabel(status.handedness)}` : "未检测到手");
+  setText("#gestureStateLabel", status.emergency_stopped ? "急停锁定" : (STATE_LABELS[tracking] || tracking));
+  setText("#gestureInputLabel", `输入：${detected ? `${handLabel(status.handedness)} / ${Number(status.hand_score || 0).toFixed(2)}` : "无"}`);
+  setText("#gestureTracking", STATE_LABELS[tracking] || tracking);
+  setText("#gestureCommandCount", `${status.commands || 0} 条指令`);
+  setText("#gestureSafety", status.emergency_stopped ? "急停锁定，需重启运行器" : (status.follow_enabled ? "跟随已启用" : "跟随未启用"));
+  setText("#gestureDetection", detected ? "已识别" : "等待中");
+  setText("#gestureFollowStatus", status.follow_enabled ? "已启用" : "未启用");
+  setText("#gestureDeviceHand", status.hand_type === "right" ? "右手" : "左手");
+  setText("#gestureEvent", status.last_event || "等待运行事件");
+  setBadge($("#gestureReadyBadge"), status.emergency_stopped ? "急停锁定" : (status.mode !== "hand-follow" ? "等待切换" : (status.follow_enabled ? "控制中" : "已准备")), status.emergency_stopped ? "danger" : (status.mode !== "hand-follow" ? "warning" : "success"));
+
+  const left = status.hand_type !== "right";
+  const mobileSource = status.vision_source === "mobile-camera";
+  $("#gestureMacSourceButton").classList.toggle("selected", !mobileSource);
+  $("#gestureMobileSourceButton").classList.toggle("selected", mobileSource);
+  $("#leftHandButton").classList.toggle("selected", left);
+  $("#rightHandButton").classList.toggle("selected", !left);
+  $("#leftHandButton").disabled = !state.online || status.emergency_stopped || left;
+  $("#rightHandButton").disabled = !state.online || status.emergency_stopped || !left;
+  const followButton = $("#followEnableButton");
+  if (status.mode !== "hand-follow") { followButton.textContent = "切换至手势模式"; followButton.dataset.action = "mode-hand"; }
+  else { followButton.textContent = "启用跟随"; followButton.dataset.action = "follow-enable"; }
+  followButton.disabled = !state.online || status.emergency_stopped || (status.mode === "hand-follow" && status.follow_enabled);
+  $("#followPauseButton").disabled = !state.online || status.emergency_stopped || status.mode !== "hand-follow" || !status.follow_enabled;
+  $("#fistButton").disabled = !state.online || status.emergency_stopped || status.mode !== "hand-follow";
   setText("#backendValue", status.backend || "unknown");
   setText("#hardwareValue", status.connected ? "已连接" : "未连接");
-  setText("#deviceValue", deviceHand === "left" ? "左手 / 0x28" : "右手 / 0x27");
-  setText("#cameraValue", status.camera_ok ? (showLidar ? "iPhone RGB 正常" : "正常") : "不可用");
-  setText("#eventMessage", status.last_event || "等待事件");
-
-  const fallback = document.querySelector("#fallbackReason");
+  setText("#cameraValue", status.camera_ok ? "正常" : "不可用");
+  setText("#trackingValue", tracking);
   const reason = status.fallback_reason || status.last_error;
-  fallback.hidden = !reason;
-  fallback.textContent = reason ? `诊断：${reason}` : "";
-  setText("#cameraErrorTitle", showLidar ? "iPhone RGB 画面不可用" : "摄像头画面不可用");
-  setText(
-    "#cameraErrorDetail",
-    showLidar
-      ? "等待 iPhone RGB 数据流。"
-      : "检查 macOS 摄像头权限，或确认没有其他程序占用摄像头。",
-  );
-  document.querySelector("#cameraError").hidden = Boolean(status.camera_ok);
-  document.querySelector("#depthError").hidden = !showLidar || (iphoneConnected && (depthFps || 0) > 0);
-
+  $("#fallbackReason").hidden = !reason;
+  setText("#fallbackReason", reason ? `诊断：${reason}` : "");
+  $("#gestureCameraError").hidden = Boolean(status.camera_ok);
   const pose = Array.isArray(status.pose) ? status.pose : [];
   const channels = Array.isArray(status.channels) ? status.channels : Object.keys(CHANNEL_LABELS);
   channels.forEach((name, index) => {
-    const row = document.querySelector(`[data-channel="${name}"]`);
+    const row = $(`[data-channel="${name}"]`);
     if (!row) return;
     const value = Math.max(0, Math.min(255, Number(pose[index] || 0)));
-    row.querySelector(".channel-value").textContent = String(Math.round(value)).padStart(3, "0");
-    row.querySelector(".channel-bar span").style.width = `${value / 255 * 100}%`;
+    $(".channel-value", row).textContent = String(Math.round(value)).padStart(3, "0");
+    $(".channel-bar span", row).style.width = `${value / 255 * 100}%`;
   });
+}
 
-  document.querySelector("#followEnableButton").disabled = stopped || !handMode || followEnabled || !ready;
-  document.querySelector("#followPauseButton").disabled = stopped || !handMode || !followEnabled || !ready;
-  document.querySelector("#calibrateDepthButton").disabled = stopped || !showLidar || !ready
-    || state !== "DISARMED" || !hasValidDepthTarget;
-  document.querySelector("#clearDepthButton").disabled = stopped || !showLidar || !ready
-    || state !== "DISARMED" || !depthCalibrated;
-  document.querySelector("#armButton").disabled = stopped || handMode || state !== "DISARMED" || !ready
-    || (showLidar && (!iphoneConnected || !depthCalibrated));
-  document.querySelector("#disarmButton").disabled = stopped || handMode || state !== "ARMED" || !ready;
-  document.querySelector("#openButton").disabled = !ready;
-  document.querySelector("#stopButton").disabled = stopped || !ready;
+function renderAgent(status) {
+  const objectMode = status.mode === "object-grasp";
+  const lidar = status.vision_source === "iphone-lidar";
+  const mobileSource = status.vision_source === "mobile-camera";
+  const stopped = Boolean(status.emergency_stopped);
+  const graspState = status.state || "DISARMED";
+  const displayedGraspState = objectMode ? graspState : "WAITING_MODE";
+  const iphone = Boolean(status.iphone_connected);
+  const depthCalibrated = Boolean(status.depth_calibrated);
+  const depthFps = Math.max(0, finiteNumber(status.depth_fps) || 0);
+  const depthLatency = finiteNumber(status.depth_latency_ms);
+  const signedDistance = finiteNumber(status.signed_distance_mm);
+  const validRatio = Math.max(0, Math.min(1, finiteNumber(status.depth_valid_ratio) || 0));
+  const hasTarget = Boolean(status.target && status.target !== "无");
+  const validDepthTarget = iphone && validRatio > 0 && hasTarget;
+  const phaseKey = status.depth_phase || "DEPTH_UNAVAILABLE";
 
-  if (status.last_event && status.last_event !== lastEvent) {
-    lastEvent = status.last_event;
-    if (status.ready) showToast(lastEvent);
+  setText("#agentCameraTitle", lidar ? "iPhone 腕部视角" : (mobileSource ? "手机物品抓取" : "Mac 物品抓取"));
+  setText("#agentFps", Number(status.fps || 0).toFixed(1));
+  setText("#agentObjectCount", String(status.objects || 0));
+  setText("#agentStateLabel", stopped ? "急停锁定" : (STATE_LABELS[displayedGraspState] || displayedGraspState));
+  setText("#agentTargetLabel", `目标：${status.target || "无"}`);
+  setText("#agentTarget", status.target || "无");
+  setText("#agentGraspState", objectMode ? (STATE_LABELS[graspState] || graspState) : "手势模式中");
+  setText("#agentEvent", status.last_event || "等待运行事件");
+  const maxStable = Math.max(1, Number(status.stable_frames || 1));
+  const stable = Math.max(0, Number(status.stable_count || 0));
+  setText("#agentStableText", objectMode ? `${stable} / ${maxStable}` : "等待切换");
+  $("#agentStableProgress").style.width = objectMode ? `${Math.min(100, stable / maxStable * 100)}%` : "0%";
+
+  $("#macSourceButton").classList.toggle("selected", !lidar && !mobileSource);
+  $("#mobileSourceButton").classList.toggle("selected", mobileSource);
+  $("#iphoneSourceButton").classList.toggle("selected", lidar);
+  $("#macSourceButton").disabled = !state.online || stopped || !objectMode || (!lidar && !mobileSource);
+  $("#mobileSourceButton").disabled = !state.online || stopped || !objectMode || mobileSource;
+  $("#iphoneSourceButton").disabled = !state.online || stopped || !objectMode || lidar;
+  $("#lidarSummary").hidden = !lidar;
+  $("#depthPanel").hidden = !lidar;
+  $("#agentStreams").classList.toggle("single", !lidar);
+  setText("#rgbSourceLabel", lidar ? "iPhone RGB" : (mobileSource ? "手机相机" : "Mac 摄像头"));
+  setText("#pairingCode", String(status.pairing_code || "------"));
+  setText("#iphoneState", iphone ? "已连接" : "等待连接");
+  setText("#depthStreamState", `${depthFps.toFixed(1)} FPS${depthLatency == null ? "" : ` / ${Math.max(0, depthLatency).toFixed(0)} ms`}`);
+  setText("#contactDepth", depthCalibrated && finiteNumber(status.contact_depth_mm) != null ? `${finiteNumber(status.contact_depth_mm).toFixed(1)} mm` : "未标定");
+  setText("#depthDistance", signedDistance == null ? "---" : `${signedDistance >= 0 ? "+" : ""}${signedDistance.toFixed(1)} mm`);
+  setText("#depthPhase", DEPTH_LABELS[phaseKey] || "等待深度");
+  $("#calibrateDepthButton").disabled = !state.online || stopped || !objectMode || !lidar || graspState !== "DISARMED" || !validDepthTarget;
+  $("#clearDepthButton").disabled = !state.online || stopped || !objectMode || !lidar || graspState !== "DISARMED" || !depthCalibrated;
+
+  let safetyText = "区域安全，可布防";
+  let safetyTone = "online";
+  if (stopped) { safetyText = "急停锁定，需重启运行器"; safetyTone = "danger"; }
+  else if (!objectMode) { safetyText = "当前为手势模式"; safetyTone = "warning"; }
+  else if (lidar && !iphone) { safetyText = "iPhone LiDAR 未连接"; safetyTone = "danger"; }
+  else if (lidar && !depthCalibrated) { safetyText = "等待 0 cm 接触面标定"; safetyTone = "warning"; }
+  else if (!status.camera_ok) { safetyText = "摄像头不可用"; safetyTone = "warning"; }
+  else if (status.hand_blocked) { safetyText = "手进入抓取区域，禁止闭合"; safetyTone = "danger"; }
+  else if (graspState === "ARMED") { safetyText = "已布防，等待稳定目标"; safetyTone = "warning"; }
+  else if (graspState === "CLOSING") { safetyText = "正在按限速闭合"; safetyTone = "warning"; }
+  else if (graspState === "HOLDING") safetyText = "已保持抓取，等待张开";
+  setDot($("#agentSafetyDot"), safetyTone);
+  setText("#agentSafetyText", safetyText);
+  $("#agentCameraError").hidden = Boolean(status.camera_ok);
+  $("#depthError").hidden = !lidar || (iphone && depthFps > 0);
+
+  const arm = $("#armButton");
+  if (!objectMode) { arm.textContent = "切换至物品模式"; arm.dataset.action = "mode-object"; }
+  else { arm.textContent = "布防识别"; arm.dataset.action = "arm"; }
+  arm.disabled = !state.online || stopped || (objectMode && (graspState !== "DISARMED" || (lidar && (!iphone || !depthCalibrated))));
+  $("#disarmButton").disabled = !state.online || stopped || !objectMode || graspState !== "ARMED";
+  updateFeeds();
+}
+
+function renderDevices(status) {
+  setBadge($("#deviceO6Badge"), status.connected ? "已连接" : (status.dry_run ? "模拟" : "未连接"), status.connected ? "success" : (status.dry_run ? "simulation" : "warning"));
+  setText("#deviceO6Description", status.connected ? "O6 已连接，指令由安全队列下发。" : (status.dry_run ? "模拟模式，不向真实设备下发。" : "运行层未检测到 O6。"));
+  setText("#deviceHandValue", deviceLabel(status.hand_type));
+  setText("#deviceCommandValue", String(status.commands || 0));
+  setBadge($("#deviceCameraBadge"), status.camera_ok ? "正常" : "异常", status.camera_ok ? "success" : "danger");
+  setText("#deviceCameraDescription", status.camera_ok ? "视觉输入在线，可用于识别。" : "请检查权限或设备占用。" );
+  setText("#deviceFpsValue", `${Number(status.fps || 0).toFixed(1)} FPS`);
+  setText("#deviceCameraState", status.camera_ok ? "在线" : "不可用");
+  setBadge($("#deviceIphoneBadge"), status.iphone_connected ? "已连接" : "待连接", status.iphone_connected ? "success" : "warning");
+  setText("#deviceIphoneDescription", status.iphone_connected ? "RGB 与 LiDAR 深度流已接入。" : "局域网接收器在线，等待 iPhone。" );
+  setText("#deviceIphoneName", status.iphone_device || "---");
+  setText("#deviceDepthFps", `${Number(status.depth_fps || 0).toFixed(1)} FPS`);
+  setText("#deviceDepthCalibration", status.depth_calibrated ? "接触面已标定" : "尚未标定");
+  setBadge($("#deviceRuntimeBadge"), status.ready ? "运行中" : "异常", status.ready ? "success" : "danger");
+  setText("#deviceBackend", status.backend || "unknown");
+  setText("#deviceVisionSource", status.vision_source === "iphone-lidar" ? "iPhone LiDAR" : (status.vision_source === "mobile-camera" ? "手机相机" : "Mac 摄像头"));
+  setText("#deviceBonjour", status.bonjour_state || "---");
+  setText("#deviceLastEvent", status.last_event || "等待事件");
+}
+
+function renderStatus(status) {
+  state.status = status;
+  setOnline(true);
+  renderGlobal(status);
+  renderHome(status);
+  renderGesture(status);
+  renderAgent(status);
+  renderDevices(status);
+  updateMobilePrimary();
+  $$(".real-control").forEach((button) => {
+    if (!button.matches("button")) return;
+    const managed = ["leftHandButton", "rightHandButton", "followEnableButton", "followPauseButton", "macSourceButton", "mobileSourceButton", "iphoneSourceButton", "gestureMacSourceButton", "gestureMobileSourceButton", "calibrateDepthButton", "clearDepthButton", "armButton", "disarmButton"].includes(button.id);
+    if (!managed) button.disabled = !status.ready || Boolean(status.emergency_stopped);
+  });
+  if (!state.lastEvent) state.lastEvent = status.last_event || "";
+  else if (status.last_event && status.last_event !== state.lastEvent) {
+    state.lastEvent = status.last_event;
+    showToast("运行状态更新", status.last_event, status.emergency_stopped ? "danger" : "success");
   }
 }
 
@@ -309,48 +402,173 @@ async function refreshStatus() {
   try {
     const response = await fetch("/api/status", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    updateStatus(await response.json());
+    renderStatus(await response.json());
   } catch (error) {
-    document.querySelector("#connectionDot").className = "status-dot danger";
-    setText("#connectionText", "无法连接本地运行层");
-    setText("#eventMessage", `状态接口错误：${error.message}`);
+    setOnline(false);
+    setText("#homeReadiness span", "视觉运行层离线，真实控制已停用");
+    setText("#homeLastEvent", `状态接口错误：${error.message}`);
   }
 }
 
-async function sendAction(action, button) {
-  button.disabled = true;
+async function sendAction(action, button = null) {
+  if (!REAL_ACTIONS.has(action)) return;
+  if (!state.online) return showToast("无法发送指令", "视觉运行层当前离线。", "danger");
+  if (button) button.disabled = true;
   try {
-    const response = await fetch("/api/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
+    const response = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
     const result = await response.json();
     if (!response.ok || !result.accepted) throw new Error(result.error || `HTTP ${response.status}`);
-    showToast("指令已进入安全队列");
+    showToast("指令已进入安全队列", "等待运行层确认实际状态。");
     window.setTimeout(refreshStatus, 80);
   } catch (error) {
-    showToast(`指令失败：${error.message}`);
+    showToast("指令失败", error.message, "danger");
   } finally {
-    window.setTimeout(() => { button.disabled = false; }, 250);
+    if (button) window.setTimeout(() => { button.disabled = false; }, 260);
   }
 }
 
-document.querySelectorAll("[data-action]").forEach((button) => {
-  button.addEventListener("click", () => sendAction(button.dataset.action, button));
-});
+function stopMobileTracks() {
+  window.clearTimeout(mobileCamera.timer);
+  mobileCamera.timer = null;
+  mobileCamera.active = false;
+  if (mobileCamera.stream) mobileCamera.stream.getTracks().forEach((track) => track.stop());
+  mobileCamera.stream = null;
+  $("#mobileCameraPreview").srcObject = null;
+  $("#startMobileCamera").disabled = false;
+  $("#switchMobileCamera").disabled = true;
+  $("#stopMobileCamera").disabled = true;
+}
 
-document.querySelector("#cameraFeed").addEventListener("error", () => {
-  document.querySelector("#cameraError").hidden = false;
-});
+async function uploadMobileFrame() {
+  if (!mobileCamera.active) return;
+  const video = $("#mobileCameraPreview");
+  if (video.readyState < 2 || !video.videoWidth) {
+    mobileCamera.timer = window.setTimeout(uploadMobileFrame, 90);
+    return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 480;
+  const sourceRatio = video.videoWidth / video.videoHeight;
+  const targetRatio = 4 / 3;
+  let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
+  if (sourceRatio > targetRatio) { sw = video.videoHeight * targetRatio; sx = (video.videoWidth - sw) / 2; }
+  else { sh = video.videoWidth / targetRatio; sy = (video.videoHeight - sh) / 2; }
+  canvas.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, 640, 480);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.72));
+  try {
+    if (!blob || !mobileCamera.active) return;
+    const response = await fetch("/api/mobile-frame", { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob, cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    setText("#mobileCameraStatus", `${mobileCamera.facingMode === "environment" ? "后置" : "前置"}相机采集中`);
+  } catch (error) {
+    setText("#mobileCameraStatus", `上传失败：${error.message}`);
+  }
+  if (mobileCamera.active) mobileCamera.timer = window.setTimeout(uploadMobileFrame, 83);
+}
 
-document.querySelector("#depthFeed").addEventListener("load", () => {
-  document.querySelector("#depthError").hidden = true;
-});
+async function startMobileCamera(button = null) {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    setText("#mobileCameraStatus", "需要使用 HTTPS 地址打开并允许相机权限");
+    return showToast("无法打开手机相机", "请使用 HTTPS 局域网地址。", "danger");
+  }
+  if (button) button.disabled = true;
+  stopMobileTracks();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: mobileCamera.facingMode }, width: { ideal: 1280 }, height: { ideal: 960 }, frameRate: { ideal: 12, max: 15 } },
+    });
+    mobileCamera.stream = stream;
+    mobileCamera.active = true;
+    const video = $("#mobileCameraPreview");
+    video.srcObject = stream;
+    await video.play();
+    $("#startMobileCamera").disabled = true;
+    $("#switchMobileCamera").disabled = false;
+    $("#stopMobileCamera").disabled = false;
+    await sendAction("source-mobile-camera");
+    uploadMobileFrame();
+  } catch (error) {
+    stopMobileTracks();
+    setText("#mobileCameraStatus", `相机不可用：${error.message}`);
+    showToast("手机相机未启动", "请在 Safari 中允许相机权限。", "danger");
+  }
+}
 
-document.querySelector("#depthFeed").addEventListener("error", () => {
-  if (depthFeedActive) document.querySelector("#depthError").hidden = false;
-});
+async function stopMobileCamera(selectMac = true) {
+  stopMobileTracks();
+  setText("#mobileCameraStatus", "手机相机已停止");
+  if (selectMac && state.status?.vision_source === "mobile-camera") await sendAction("source-mac-camera");
+}
 
+function renderChannels() {
+  for (const [name, label] of Object.entries(CHANNEL_LABELS)) {
+    const row = document.createElement("div");
+    row.className = "channel-row";
+    row.dataset.channel = name;
+    row.innerHTML = `<span class="channel-name" title="${name}">${label}</span><span class="channel-bar"><span></span></span><strong class="channel-value">---</strong>`;
+    $("#channelList").append(row);
+  }
+}
+
+function runAgentDemo() {
+  window.clearInterval(state.demoTimer);
+  if (state.demoStep >= 3) state.demoStep = 0;
+  const button = $("#agentDemoButton");
+  button.textContent = "演示计划进行中";
+  const update = () => {
+    $$("#agentPlan li").forEach((item, index) => {
+      item.classList.toggle("done", index < state.demoStep);
+      item.classList.toggle("current", index === state.demoStep);
+      $("span", item).textContent = index < state.demoStep ? "✓" : String(index + 1);
+    });
+    if (state.demoStep >= 3) {
+      window.clearInterval(state.demoTimer);
+      button.textContent = "重新预览 Agent 计划";
+      showToast("Agent 演示完成", "没有向硬件发送额外指令。");
+      return;
+    }
+    state.demoStep += 1;
+  };
+  update();
+  state.demoTimer = window.setInterval(update, 900);
+}
+
+$$('[data-page-target]').forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageTarget)));
+$$('[data-action]').forEach((button) => button.addEventListener("click", () => {
+  const action = button.dataset.action;
+  if (action === "stop" && state.status?.emergency_stopped) return showToast("急停保持锁定", "请重启运行器解除，前端不会绕过安全锁。", "danger");
+  if (action === "source-mobile-camera" && !mobileCamera.active) return startMobileCamera(button);
+  if ((action === "source-mac-camera" || action === "source-iphone-lidar") && mobileCamera.active) stopMobileTracks();
+  sendAction(action, button);
+}));
+$("#startMobileCamera").addEventListener("click", (event) => startMobileCamera(event.currentTarget));
+$("#switchMobileCamera").addEventListener("click", async () => {
+  mobileCamera.facingMode = mobileCamera.facingMode === "environment" ? "user" : "environment";
+  await startMobileCamera($("#switchMobileCamera"));
+});
+$("#stopMobileCamera").addEventListener("click", () => stopMobileCamera(true));
+window.addEventListener("pagehide", () => stopMobileTracks());
+$("#mobilePrimaryAction").addEventListener("click", () => {
+  const button = $("#mobilePrimaryAction");
+  if (button.dataset.action) return sendAction(button.dataset.action, button);
+  if (state.page === "home") return setPage("gesture");
+  if (state.page === "devices") return refreshStatus();
+  if (state.page === "history") return $(".history-item.active")?.scrollIntoView({ block: "center", behavior: "smooth" });
+  if (state.page === "settings") return $("#saveSettings").click();
+});
+$("#refreshDevices").addEventListener("click", async (event) => { event.currentTarget.textContent = "刷新中…"; await refreshStatus(); event.currentTarget.textContent = "刷新状态"; showToast("设备状态已刷新", state.online ? "真实运行状态已更新。" : "运行层仍处于离线状态。", state.online ? "success" : "warning"); });
+$("#agentDemoButton").addEventListener("click", runAgentDemo);
+$$('.history-item').forEach((button) => button.addEventListener("click", () => { $$(".history-item").forEach((item) => item.classList.toggle("active", item === button)); const item = HISTORY[button.dataset.history]; setText("#historyTitle", item[0]); setText("#historyMeta", item[1]); setText("#historyMode", item[2]); setText("#historySafety", item[3]); }));
+$$('[data-settings-tab]').forEach((button) => button.addEventListener("click", () => { $$('[data-settings-tab]').forEach((item) => item.classList.toggle("active", item === button)); showToast("设置分类", `${button.textContent}选项为演示界面。`); }));
+$$('[data-interface-mode]').forEach((button) => button.addEventListener("click", () => { document.body.classList.toggle("expert-mode", button.dataset.interfaceMode === "expert"); $$('[data-interface-mode]').forEach((item) => item.classList.toggle("selected", item === button)); }));
+$("#saveSettings").addEventListener("click", () => { setText("#settingsSaveStatus", "本次会话的演示设置已保存"); showToast("演示设置已保存", "未修改运行层配置或硬件参数。"); });
+$$('[data-video-feed]').forEach((image) => image.addEventListener("error", () => { $(image.id === "gestureFeed" ? "#gestureCameraError" : "#agentCameraError").hidden = false; }));
+$("#depthFeed").addEventListener("error", () => { if (state.page === "agent") $("#depthError").hidden = false; });
+
+renderChannels();
+updateFeeds();
+updateMobilePrimary();
 refreshStatus();
 window.setInterval(refreshStatus, 250);

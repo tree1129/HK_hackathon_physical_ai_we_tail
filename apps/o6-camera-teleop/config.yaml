@@ -1,5 +1,5 @@
 o6:
-  hand_type: left
+  hand_type: right
   hand_joint: O6
   dry_run: true
   backend: auto

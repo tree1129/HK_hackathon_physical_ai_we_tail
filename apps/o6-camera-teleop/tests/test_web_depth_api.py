@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+import cv2
+import numpy as np
 import yaml
 
 from web_console import (
@@ -13,6 +15,7 @@ from web_console import (
 
 NEW_ACTIONS = {
     "source-mac-camera",
+    "source-mobile-camera",
     "source-iphone-lidar",
     "depth-calibrate-contact",
     "depth-clear-calibration",
@@ -20,6 +23,9 @@ NEW_ACTIONS = {
 
 
 class FakeRuntime:
+    def __init__(self):
+        self.mobile_frames = []
+
     def status_snapshot(self):
         return {
             "vision_source": "iphone-lidar",
@@ -35,6 +41,9 @@ class FakeRuntime:
 
     def depth_mjpeg_stream(self):
         return iter(())
+
+    def publish_mobile_frame(self, payload):
+        self.mobile_frames.append(payload)
 
 
 class WebDepthApiTest(unittest.TestCase):
@@ -70,6 +79,22 @@ class WebDepthApiTest(unittest.TestCase):
         )
         self.assertEqual(len(status["pairing_code"]), 6)
         self.assertTrue(status["pairing_code"].isdigit())
+
+    def test_mobile_frame_route_accepts_jpeg_only(self):
+        runtime = FakeRuntime()
+        client = create_app(runtime).test_client()
+        image = np.zeros((4, 4, 3), dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        self.assertTrue(ok)
+
+        self.assertEqual(client.post("/api/mobile-frame", data=b"bad").status_code, 415)
+        response = client.post(
+            "/api/mobile-frame",
+            data=encoded.tobytes(),
+            content_type="image/jpeg",
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(len(runtime.mobile_frames), 1)
 
     def test_confidence_lookup_is_strict(self):
         self.assertEqual(confidence_value("low"), 0)

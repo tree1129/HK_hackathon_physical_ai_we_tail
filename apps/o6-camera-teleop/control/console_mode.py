@@ -11,6 +11,7 @@ class ConsoleMode(str, Enum):
 
 class VisionSource(str, Enum):
     MAC_CAMERA = "mac-camera"
+    MOBILE_CAMERA = "mobile-camera"
     IPHONE_LIDAR = "iphone-lidar"
 
 

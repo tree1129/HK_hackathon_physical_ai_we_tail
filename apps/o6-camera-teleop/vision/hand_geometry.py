@@ -51,7 +51,17 @@ def thumb_abduction(points: np.ndarray) -> float:
     thumb_ray = points[THUMB[-1]] - wrist
     index_ray = points[INDEX[0]] - wrist
     spread = joint_angle(wrist + thumb_ray, wrist, wrist + index_ray)
-    return float(np.clip((spread - 12.0) / (68.0 - 12.0), 0.0, 1.0))
+    angular_amount = float(np.clip((spread - 12.0) / (68.0 - 12.0), 0.0, 1.0))
+
+    palm_axis = points[INDEX[0]] - points[PINKY[0]]
+    palm_width = float(np.linalg.norm(palm_axis))
+    if palm_width < 1e-9:
+        return angular_amount
+    lateral_ratio = abs(
+        float(np.dot(points[THUMB[-1]] - points[INDEX[0]], palm_axis / palm_width))
+    ) / palm_width
+    lateral_amount = float(np.clip((lateral_ratio - 0.12) / (0.78 - 0.12), 0.0, 1.0))
+    return max(angular_amount, lateral_amount)
 
 
 def control_values(points: np.ndarray) -> OrderedDict[str, float]:

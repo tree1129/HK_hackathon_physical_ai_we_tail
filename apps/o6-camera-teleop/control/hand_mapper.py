@@ -31,10 +31,12 @@ class HandMapper:
     def geometry(self, landmarks: np.ndarray) -> dict[str, float]:
         return dict(control_values(landmarks))
 
-    def map_landmarks(self, landmarks: np.ndarray) -> tuple[list[int], dict[str, float]]:
+    def map_landmarks(
+        self, landmarks: np.ndarray, hand_type: str = "left"
+    ) -> tuple[list[int], dict[str, float]]:
         raw = self.geometry(landmarks)
         normalized = self.apply_calibration(raw)
-        return self.map_normalized(normalized), raw
+        return self.map_normalized(normalized, hand_type=hand_type), raw
 
     def apply_calibration(self, raw: Mapping[str, float]) -> dict[str, float]:
         if self.open_sample is None or self.closed_sample is None:
@@ -52,12 +54,18 @@ class HandMapper:
         )
         return result
 
-    def map_normalized(self, normalized: Mapping[str, float]) -> list[int]:
+    def map_normalized(
+        self, normalized: Mapping[str, float], hand_type: str = "left"
+    ) -> list[int]:
+        if hand_type not in ("left", "right"):
+            raise ValueError("hand_type must be left or right")
         pose: list[int] = []
         for name in CHANNEL_ORDER:
             amount = float(np.clip(normalized[name], 0.0, 1.0))
             channel = self.channels[name]
             if name == "thumb_abduction":
+                if hand_type == "right":
+                    amount = 1.0 - amount
                 value = channel["min"] + amount * (channel["max"] - channel["min"])
             else:
                 value = channel["open"] + amount * (channel["closed"] - channel["open"])

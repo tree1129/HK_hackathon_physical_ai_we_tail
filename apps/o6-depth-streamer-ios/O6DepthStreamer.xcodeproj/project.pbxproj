@@ -29,7 +29,7 @@
 
 /* Begin PBXFileReference section */
 		06303FFB130497F85DF8E387 /* DepthPacketEncoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthPacketEncoderTests.swift; sourceTree = "<group>"; };
-		077C3D7A43B8A72497CF0727 /* O6DepthStreamer.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = O6DepthStreamer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		077C3D7A43B8A72497CF0727 /* O6DepthStreamer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = O6DepthStreamer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A475FAA4D056A811812766F /* ARDepthCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARDepthCapture.swift; sourceTree = "<group>"; };
 		2D4BC8BF66C4B876315183B4 /* MacServiceBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacServiceBrowser.swift; sourceTree = "<group>"; };
 		30AA20DAC945773C3A04B1DF /* DepthFramePayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthFramePayload.swift; sourceTree = "<group>"; };
@@ -295,6 +295,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = Y2SWM94J5D;
 				INFOPLIST_FILE = O6DepthStreamer/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -346,6 +347,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = Y2SWM94J5D;
 				INFOPLIST_FILE = O6DepthStreamer/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

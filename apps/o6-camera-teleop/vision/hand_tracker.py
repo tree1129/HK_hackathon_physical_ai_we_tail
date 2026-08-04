@@ -64,7 +64,7 @@ class HandTracker:
         return HandDetection(
             image_landmarks=image_points,
             geometry_landmarks=geometry_points,
-            handedness=category.category_name or "Unknown",
+            handedness=self.physical_handedness(category.category_name or "Unknown"),
             score=float(category.score or 0.0),
         )
 
@@ -82,6 +82,11 @@ class HandTracker:
 
     def close(self) -> None:
         self._landmarker.close()
+
+    @staticmethod
+    def physical_handedness(name: str) -> str:
+        """Convert MediaPipe's mirrored-input label to the physical hand side."""
+        return {"Left": "Right", "Right": "Left"}.get(name, name)
 
     @staticmethod
     def _to_array(landmarks: list) -> np.ndarray:

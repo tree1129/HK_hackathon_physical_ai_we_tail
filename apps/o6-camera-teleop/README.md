@@ -69,6 +69,21 @@ code .
 
 ## iPhone 17 Pro LiDAR 近距离抓取
 
+## 手机 Safari 相机输入
+
+手机浏览器相机需要 HTTPS。首次运行时生成局域网证书：
+
+```bash
+./tools/create_lan_certificate.sh 192.168.254.188
+./run_web.sh --camera 1 --real --host 0.0.0.0 --port 8765
+.venv/bin/python tools/lan_https_proxy.py --port 8767 \
+  --cert .certs/o6-lan.crt --key .certs/o6-lan.key
+```
+
+把 `.certs/o6-lan-ca.crt` 通过 AirDrop 发到 iPhone 并安装描述文件，然后进入“设置 > 通用 > 关于本机 > 证书信任设置”，为 `O6 LAN Camera CA` 开启完全信任。手机与 Mac 在同一 Wi-Fi 时打开 `https://192.168.254.188:8767`，进入“手势控制”并点击“启动手机相机”。默认使用后置主摄，可在页面切换镜头。Mac 演示页面继续使用 `http://127.0.0.1:8765`。
+
+手机网页只发送 RGB 图像，可用于手势跟随和普通物品识别；深度抓取仍需 `O6 Depth Streamer` 的 LiDAR 数据。
+
 该链路把固定在机械腕部的 iPhone 17 Pro 作为 RGB-D 传感器：iPhone 采集彩色画面和 LiDAR 深度，Mac 统一完成目标识别、距离判断、安全门禁与 O6 指令下发。网页仍只在 Mac 本机 `http://127.0.0.1:8765` 打开；iPhone 只连接 Mac 的 WebSocket `8766` 端口，不能访问控制接口，也不能直接控制 O6。
 
 本版本只控制 **O6 六个手指通道**，不会控制机械臂、手腕或让 O6 主动靠近物体。物体与 O6 的接近必须由人或另外的机械臂控制系统完成。
@@ -222,7 +237,9 @@ cd tailhand/apps/o6-camera-teleop
 ## 映射和安全机制
 
 - 四指分别计算 MCP、PIP、DIP 三个 3D 关节弯曲角，融合为 `0.0-1.0`。
-- 拇指分别计算屈曲和相对手掌/食指掌骨的外展角。
+- 拇指屈曲使用 MCP/IP 角度；侧摆同时使用外展角和掌宽归一化的横向展开距离，减少透视导致的行程不足。
+- 右手 O6 的拇指侧摆端点与左手镜像：人手向外展开时，右手横摆值向低端移动，左手仍向高端移动。
+- MediaPipe 的镜像输入左右手标签会转换为物理手侧，镜像预览不再把右手显示为左手。
 - 优先使用 MediaPipe 世界坐标，不使用手在画面中的绝对位置或像素尺寸。
 - O6 的开/闭端点全部在 `config.yaml > o6 > channels` 中配置，代码不假设控制方向。
 - 当前左手实测初值为张开约 `[250,250,250,250,250,250]`，握拳约 `[102,18,0,0,0,0]`。

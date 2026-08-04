@@ -33,9 +33,11 @@ ALLOWED_ACTIONS = {
     "mode-object",
     "follow-enable",
     "follow-pause",
+    "fist",
     "hand-left",
     "hand-right",
     "source-mac-camera",
+    "source-mobile-camera",
     "source-iphone-lidar",
     "depth-calibrate-contact",
     "depth-clear-calibration",
@@ -49,6 +51,13 @@ def confidence_value(name: str) -> int:
         return DEPTH_CONFIDENCE[name]
     except (KeyError, TypeError):
         raise ValueError(f"unknown depth confidence: {name!r}") from None
+
+
+def _fist_pose(mapper: HandMapper, hand_type: str) -> list[int]:
+    return mapper.map_normalized(
+        {name: 1.0 for name in CHANNEL_ORDER},
+        hand_type=hand_type,
+    )
 
 
 def ensure_macos_pcan_loader() -> None:
@@ -82,6 +91,7 @@ from vision.depth_receiver import DepthReceiver
 from vision.frame_source import FrameSourceManager
 from vision.foreground_detector import ForegroundDetector
 from vision.hand_tracker import HandDetection, HandTracker
+from vision.mobile_frame_receiver import MobileFrameReceiver
 from vision.object_detector import ObjectDetection, ObjectTracker
 
 
@@ -289,6 +299,7 @@ class WebConsoleRuntime:
         lidar_config = config.get("iphone_lidar", {})
         self.pairing_code = f"{secrets.randbelow(1_000_000):06d}"
         self.depth_receiver: DepthReceiver | None = None
+        self.mobile_receiver = MobileFrameReceiver(timeout_seconds=1.0)
         if lidar_config.get("enabled", True):
             self.depth_receiver = DepthReceiver(
                 self.pairing_code,
@@ -335,6 +346,9 @@ class WebConsoleRuntime:
             "iphone_receiver_running": False,
             "iphone_connected": False,
             "iphone_device": None,
+            "mobile_camera_connected": False,
+            "mobile_camera_fps": 0.0,
+            "mobile_camera_age_ms": None,
             "bonjour_state": "stopped",
             "bonjour_error": None,
             "depth_fps": 0.0,
@@ -405,6 +419,9 @@ class WebConsoleRuntime:
         except queue.Full:
             return False
 
+    def publish_mobile_frame(self, jpeg: bytes) -> None:
+        self.mobile_receiver.publish(jpeg)
+
     def mjpeg_stream(self) -> Iterator[bytes]:
         sequence = -1
         while not self._stop_event.is_set():
@@ -471,6 +488,7 @@ class WebConsoleRuntime:
         depth_gate: DepthGraspGate,
         calibrator: ContactCalibrator,
         safe_open: list[int],
+        hand_mapper: HandMapper,
     ) -> list[int] | None:
         if action in ("hand-left", "hand-right"):
             hand_type = "left" if action == "hand-left" else "right"
@@ -521,12 +539,12 @@ class WebConsoleRuntime:
             )
             return safe_open.copy()
 
-        if action in ("source-mac-camera", "source-iphone-lidar"):
-            source = (
-                VisionSource.MAC_CAMERA
-                if action == "source-mac-camera"
-                else VisionSource.IPHONE_LIDAR
-            )
+        if action in ("source-mac-camera", "source-mobile-camera", "source-iphone-lidar"):
+            source = {
+                "source-mac-camera": VisionSource.MAC_CAMERA,
+                "source-mobile-camera": VisionSource.MOBILE_CAMERA,
+                "source-iphone-lidar": VisionSource.IPHONE_LIDAR,
+            }[action]
             controller.move(safe_open)
             hand_filter.reset(safe_open)
             grasp_filter.reset(safe_open)
@@ -537,7 +555,11 @@ class WebConsoleRuntime:
             self._latest_target_depth_mm = None
             foreground.clear()
             mode_state.switch_source(source)
-            label = "Mac 摄像头" if source == VisionSource.MAC_CAMERA else "iPhone LiDAR"
+            label = {
+                VisionSource.MAC_CAMERA: "Mac 摄像头",
+                VisionSource.MOBILE_CAMERA: "手机相机",
+                VisionSource.IPHONE_LIDAR: "iPhone LiDAR",
+            }[source]
             self._set_status(
                 vision_source=source.value,
                 depth_calibrating=False,
@@ -597,7 +619,10 @@ class WebConsoleRuntime:
                 else ConsoleMode.OBJECT_GRASP
             )
             mode_state.switch(mode)
-            if mode == ConsoleMode.HAND_FOLLOW:
+            if (
+                mode == ConsoleMode.HAND_FOLLOW
+                and mode_state.vision_source == VisionSource.IPHONE_LIDAR
+            ):
                 mode_state.switch_source(VisionSource.MAC_CAMERA)
             event = (
                 "已切换到手势跟随；点击启用跟随后才会发送动作"
@@ -654,6 +679,19 @@ class WebConsoleRuntime:
                 self._set_status(last_event="已解除布防")
             else:
                 self._set_status(last_event="只有等待识别时可以解除布防")
+        elif action == "fist":
+            if controller.emergency_stopped:
+                self._set_status(last_event="急停已锁定，无法执行一键握拳")
+                return None
+            if mode_state.mode != ConsoleMode.HAND_FOLLOW:
+                self._set_status(last_event="请先切换到手势跟随模式")
+                return None
+            fist_pose = _fist_pose(hand_mapper, controller.config["hand_type"])
+            mode_state.pause_follow()
+            controller.move(fist_pose)
+            hand_filter.reset(fist_pose)
+            self._set_status(last_event="已暂停跟随并执行一键握拳")
+            return fist_pose.copy()
         elif action == "open":
             controller.send_safe_open(safe_open)
             hand_filter.reset(safe_open)
@@ -676,6 +714,7 @@ class WebConsoleRuntime:
         frame_sources = FrameSourceManager(
             self.camera,
             self.depth_receiver or _UnavailableDepthReceiver(),
+            mobile_receiver=self.mobile_receiver,
         )
         tracker: ObjectTracker | None = None
         hand_tracker: HandTracker | None = None
@@ -761,6 +800,7 @@ class WebConsoleRuntime:
             last_frame = None
             last_frame_source: VisionSource | None = None
             last_depth_sequence = -1
+            last_mobile_sequence = -1
             previous_depth_time: float | None = None
             depth_fps = 0.0
             measurement = DepthMeasurement(None, None, 0.0, (0, 0, 0, 0))
@@ -803,6 +843,12 @@ class WebConsoleRuntime:
                         bonjour_state=receiver_status.bonjour_state,
                         bonjour_error=receiver_status.bonjour_error,
                     )
+                mobile_status = self.mobile_receiver.status(now)
+                self._set_status(
+                    mobile_camera_connected=mobile_status["connected"],
+                    mobile_camera_fps=mobile_status["fps"],
+                    mobile_camera_age_ms=mobile_status["age_ms"],
+                )
 
                 while True:
                     try:
@@ -825,6 +871,7 @@ class WebConsoleRuntime:
                         depth_gate,
                         calibrator,
                         safe_open,
+                        hand_mapper,
                     )
                     if changed_pose is not None:
                         current_pose = changed_pose
@@ -849,6 +896,18 @@ class WebConsoleRuntime:
                             target_depth_mm=None,
                             signed_distance_mm=None,
                         )
+                    elif mode_state.vision_source == VisionSource.MOBILE_CAMERA:
+                        if mode_state.follow_enabled:
+                            mode_state.pause_follow()
+                            controller.send_safe_open(safe_open)
+                            current_pose = safe_open.copy()
+                            hand_filter.reset(safe_open)
+                            self._set_status(last_event="手机相机断流，已暂停跟随并安全张开")
+                        if machine.state == GraspState.ARMED:
+                            machine.disarm()
+                            foreground.clear()
+                            self._set_status(last_event="手机相机断流，已自动解除布防")
+                        self._set_status(camera_ok=False)
                     else:
                         self._set_status(camera_ok=False)
                         if failures == 10:
@@ -859,6 +918,12 @@ class WebConsoleRuntime:
                 if (
                     sample.depth is not None
                     and sample.depth.sequence == last_depth_sequence
+                ):
+                    time.sleep(0.005)
+                    continue
+                if (
+                    sample.source == VisionSource.MOBILE_CAMERA
+                    and sample.sequence == last_mobile_sequence
                 ):
                     time.sleep(0.005)
                     continue
@@ -877,6 +942,8 @@ class WebConsoleRuntime:
                             else 0.9 * depth_fps + 0.1 * instant_depth_fps
                         )
                     previous_depth_time = now
+                if sample.source == VisionSource.MOBILE_CAMERA:
+                    last_mobile_sequence = sample.sequence or last_mobile_sequence
 
                 timestamp_ms = int((now - start_time) * 1000)
                 hand_detection = hand_tracker.process(frame, timestamp_ms)
@@ -890,7 +957,8 @@ class WebConsoleRuntime:
                     measurement = DepthMeasurement(None, None, 0.0, (0, 0, 0, 0))
                     if hand_detection is not None:
                         hand_target_pose, raw_sample = hand_mapper.map_landmarks(
-                            hand_detection.geometry_landmarks
+                            hand_detection.geometry_landmarks,
+                            hand_type=controller.config["hand_type"],
                         )
                         normalized_sample = hand_mapper.apply_calibration(raw_sample)
                         if not mode_state.follow_enabled:
@@ -1182,6 +1250,17 @@ def create_app(runtime) -> Flask:
             return jsonify({"accepted": False, "error": "invalid or busy action"}), 400
         return jsonify({"accepted": True, "action": requested_action}), 202
 
+    @app.post("/api/mobile-frame")
+    def mobile_frame():
+        if request.mimetype != "image/jpeg":
+            return jsonify({"accepted": False, "error": "image/jpeg required"}), 415
+        payload = request.get_data(cache=False)
+        try:
+            runtime.publish_mobile_frame(payload)
+        except ValueError as exc:
+            return jsonify({"accepted": False, "error": str(exc)}), 400
+        return "", 204
+
     @app.get("/video_feed")
     def video_feed():
         return Response(
@@ -1207,6 +1286,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="config.yaml", help="YAML configuration path")
     parser.add_argument("--host", default="127.0.0.1", help="HTTP bind address")
     parser.add_argument("--port", type=int, default=8765, help="HTTP port")
+    parser.add_argument("--cert", help="TLS certificate path")
+    parser.add_argument("--key", help="TLS private key path")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="never connect to hardware")
     mode.add_argument("--real", action="store_true", help="request a real O6 connection")
@@ -1222,12 +1303,26 @@ def main() -> int:
     requested_dry_run = not args.real if (args.real or args.dry_run) else bool(config["o6"].get("dry_run", True))
     runtime = WebConsoleRuntime(config, args.camera, requested_dry_run, config_path)
     app = create_app(runtime)
+    if bool(args.cert) != bool(args.key):
+        raise ValueError("--cert and --key must be provided together")
+    ssl_context = (
+        (_resolve(args.cert, PROJECT_DIR), _resolve(args.key, PROJECT_DIR))
+        if args.cert and args.key
+        else None
+    )
     runtime.start()
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    print(f"O6 visual console: http://{args.host}:{args.port}")
+    scheme = "https" if ssl_context else "http"
+    print(f"O6 visual console: {scheme}://{args.host}:{args.port}")
     print("Press Ctrl-C to stop; shutdown sends safe-open when real hardware is connected.")
     try:
-        app.run(host=args.host, port=args.port, threaded=True, use_reloader=False)
+        app.run(
+            host=args.host,
+            port=args.port,
+            threaded=True,
+            use_reloader=False,
+            ssl_context=ssl_context,
+        )
     finally:
         runtime.stop()
     return 0
