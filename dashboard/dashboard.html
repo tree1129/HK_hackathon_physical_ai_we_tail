@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>A1R 可视化控制</title>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+  <style>
+    :root{font-family:system-ui,sans-serif;color:#18212f;background:#eef2f6}body{margin:0;padding:24px}.wrap{max-width:1040px;margin:auto}.head,.panel{background:#fff;border:1px solid #dce3eb;border-radius:14px;padding:18px;margin-bottom:16px}.head{display:flex;justify-content:space-between;align-items:center;gap:16px}.status{display:flex;align-items:center;gap:8px}.dot{width:10px;height:10px;border-radius:50%;background:#c33}.dot.ok{background:#24a36a}.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}.joint{text-align:center;background:#f7f9fb;border-radius:10px;padding:12px 6px}.bar{height:150px;width:12px;background:#dfe5ec;border-radius:9px;margin:10px auto;position:relative}.bar.draggable{cursor:ns-resize;touch-action:none;box-shadow:0 0 0 7px rgba(52,120,246,.08)}.bar.draggable.dragging{box-shadow:0 0 0 9px rgba(52,120,246,.2)}.fill{position:absolute;bottom:50%;width:100%;height:0;background:#3478f6;border-radius:9px;transition:.08s}.zero{position:absolute;top:50%;left:-5px;width:22px;height:2px;background:#7d8795}.value{font-variant-numeric:tabular-nums;font-weight:600}.drag-tip{height:18px;font-size:11px;color:#657084}.buttons{display:flex;justify-content:center;gap:6px}.buttons button{width:34px}.ik-layout{display:grid;grid-template-columns:minmax(320px,1.35fr) minmax(220px,.65fr);gap:18px;align-items:center}.ik-viewport{height:360px;background:#101827;border-radius:12px;overflow:hidden;touch-action:none;position:relative}.ik-viewport canvas{display:block;width:100%;height:100%}.ik-readout{font-variant-numeric:tabular-nums;display:grid;gap:10px}.axis-key{display:flex;gap:12px;font-size:13px}.axis-key span:before{content:'';display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.axis-x:before{background:#ef4444}.axis-y:before{background:#22c55e}.axis-z:before{background:#3b82f6}.controls{display:flex;flex-wrap:wrap;align-items:end;gap:14px}label{display:grid;gap:5px;font-size:13px;color:#596579}select,input,button{font:inherit;border:1px solid #bdc7d3;border-radius:8px;padding:9px 12px;background:#fff}button{cursor:pointer}button.primary{background:#1f69e0;color:#fff;border-color:#1f69e0}button.danger{background:#c93636;color:#fff;border-color:#c93636}button:disabled{opacity:.45;cursor:not-allowed}.log{font:13px ui-monospace,monospace;background:#111927;color:#c9d5e5;border-radius:9px;padding:12px;min-height:42px;white-space:pre-wrap}.warn{color:#9a5b00;font-size:13px}.confirm{display:flex;align-items:center;gap:8px;margin-left:auto}@media(max-width:760px){body{padding:12px}.grid{grid-template-columns:repeat(2,1fr)}.head{align-items:flex-start;flex-direction:column}.confirm{margin-left:0}.ik-layout{grid-template-columns:1fr}.ik-viewport{height:300px}}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="head"><div><h2 style="margin:0 0 5px">A1R 墙面卧装控制</h2><div class="status"><span id="dot" class="dot"></span><span id="status">连接中…</span></div></div><div>设备 <code>/dev/ttyACM0</code></div></section>
+  <section class="panel"><div id="joints" class="grid"></div></section>
+  <section class="panel">
+    <div class="ik-layout">
+      <div><h3 style="margin-top:0">三维末端逆解控制</h3><div id="ik3d" class="ik-viewport"></div></div>
+      <div class="ik-readout">
+        <div id="poseReadout">末端位置：读取中…</div>
+        <div id="ikDelta">空间偏移：X 0 · Y 0 · Z 0 cm</div>
+        <div class="axis-key"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span></div>
+        <div class="warn">拖动彩色轴或平面手柄改变空间坐标；空白处旋转视角，滚轮缩放。1 mm 抖动过滤，总位移最大 8 cm，较长动作自动分段平滑逆解。</div>
+      </div>
+    </div>
+  </section>
+  <section class="panel controls">
+    <label>加减按钮步长<select id="step"><option value="0.00872665">0.5°</option><option value="0.0174533" selected>1°</option><option value="0.0349066">2°</option><option value="0.0872665">5°</option></select></label>
+    <label>速度比例<input id="speed" type="number" min="0.08" max="0.25" step="0.01" value="0.16"></label>
+    <button id="tail" class="primary" disabled>摇尾巴 ×3</button>
+    <button id="stop" class="danger">停止当前轨迹</button>
+    <label class="confirm"><input id="armed" type="checkbox">我已清空工作区并准备好急停</label>
+    <div class="warn">J1–J7 均可拖动预览，松手后执行一条平滑轨迹；单次最多 10°。</div>
+  </section>
+  <section class="panel"><div id="log" class="log">等待状态…</div></section>
+</main>
+<script>
+const joints=document.getElementById('joints'),log=document.getElementById('log'),armed=document.getElementById('armed'),tail=document.getElementById('tail');
+for(let i=0;i<7;i++){const d=document.createElement('div');d.className='joint';d.innerHTML=`<b>J${i+1}</b><div class="bar draggable" data-drag-j="${i}"><span class="zero"></span><span class="fill" id="f${i}"></span></div><div class="value" id="v${i}">—</div><div class="drag-tip">上下拖动</div><div class="buttons"><button data-j="${i}" data-dir="-1" disabled>−</button><button data-j="${i}" data-dir="1" disabled>+</button></div>`;joints.appendChild(d)}
+function setEnabled(){document.querySelectorAll('[data-j]').forEach(b=>b.disabled=!armed.checked);tail.disabled=!armed.checked}armed.onchange=setEnabled;
+async function api(path,method='GET'){const r=await fetch(path,{method});const j=await r.json();if(!r.ok||j.ok===false)throw Error(j.error||'请求失败');return j}
+let motionActive=false;
+async function refresh(){if(motionActive)return;try{const s=await api('/api/state');document.getElementById('dot').classList.add('ok');document.getElementById('status').textContent='已连接 · 电机使能';s.positions.forEach((x,i)=>{document.getElementById('v'+i).textContent=(x*180/Math.PI).toFixed(1)+'°';const f=document.getElementById('f'+i),h=Math.min(50,Math.abs(x)*18);f.style.height=h+'%';f.style.bottom=x>=0?'50%':(50-h)+'%'});}catch(e){document.getElementById('dot').classList.remove('ok');document.getElementById('status').textContent='连接异常';log.textContent=e.message}}
+async function moveJoint(joint,delta){
+  if(motionActive||!armed.checked||Math.abs(delta)<0.0001)return;motionActive=true;
+  const q=new URLSearchParams({joint,delta,speed:document.getElementById('speed').value});
+  try{log.textContent=`J${+joint+1} 平滑运动中…`;const r=await api('/api/jog?'+q,'POST');log.textContent=r.message}
+  catch(x){log.textContent='错误：'+x.message}finally{motionActive=false;refresh()}
+}
+document.querySelectorAll('[data-j]').forEach(b=>{
+  b.addEventListener('click',()=>moveJoint(b.dataset.j,+b.dataset.dir*+document.getElementById('step').value));
+});
+document.querySelectorAll('[data-drag-j]').forEach(bar=>{
+  let startY=0,delta=0;
+  bar.addEventListener('pointerdown',e=>{if(!armed.checked)return;e.preventDefault();bar.setPointerCapture(e.pointerId);startY=e.clientY;delta=0;bar.classList.add('dragging')});
+  bar.addEventListener('pointermove',e=>{if(!bar.hasPointerCapture(e.pointerId))return;delta=Math.max(-0.17453,Math.min(0.17453,(startY-e.clientY)/90*0.17453));log.textContent=`J${+bar.dataset.dragJ+1} 目标偏移 ${(delta*180/Math.PI).toFixed(1)}°`});
+  const end=()=>{bar.classList.remove('dragging');const d=delta;delta=0;if(Math.abs(d)>0.001)moveJoint(bar.dataset.dragJ,d)};
+  bar.addEventListener('pointerup',end);bar.addEventListener('pointercancel',end);bar.addEventListener('lostpointercapture',end);
+});
+async function refreshPose(){if(motionActive)return;try{const r=await api('/api/pose');const p=r.pose;document.getElementById('poseReadout').textContent=`末端位置：X ${(p.x*100).toFixed(1)} · Y ${(p.y*100).toFixed(1)} · Z ${(p.z*100).toFixed(1)} cm`}catch{}}
+tail.onclick=async()=>{try{log.textContent='执行摇尾巴动作…';tail.disabled=true;const r=await api('/api/tail','POST');log.textContent=r.message;refresh()}catch(x){log.textContent='错误：'+x.message}finally{tail.disabled=!armed.checked}};
+document.getElementById('stop').onclick=async()=>{try{const r=await api('/api/stop','POST');log.textContent=r.message}catch(x){log.textContent='错误：'+x.message}};
+refresh();refreshPose();setInterval(()=>{refresh();refreshPose()},1000);
+window.robotUi={api,refresh,refreshPose,get busy(){return motionActive},set busy(v){motionActive=v}};
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {TransformControls} from 'three/addons/controls/TransformControls.js';
+
+const host=document.getElementById('ik3d'),deltaLabel=document.getElementById('ikDelta');
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x101827);
+const camera=new THREE.PerspectiveCamera(42,1,.01,10);camera.position.set(-.82,.58,.78);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));host.appendChild(renderer.domElement);
+const orbit=new OrbitControls(camera,renderer.domElement);orbit.enableDamping=true;orbit.target.set(-.24,0,.24);
+scene.add(new THREE.HemisphereLight(0xffffff,0x334155,2.1));
+const wall=new THREE.Mesh(new THREE.PlaneGeometry(1.2,1.2),new THREE.MeshStandardMaterial({color:0x334155,roughness:.9,metalness:0,side:THREE.DoubleSide,transparent:true,opacity:.58}));wall.rotation.y=Math.PI/2;wall.position.z=.28;scene.add(wall);
+const wallGrid=new THREE.GridHelper(1.2,12,0x708099,0x46556d);wallGrid.rotation.z=Math.PI/2;wallGrid.position.x=-.001;wallGrid.position.z=.28;scene.add(wallGrid);
+const base=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.08,36),new THREE.MeshStandardMaterial({color:0x94a3b8,roughness:.42,metalness:.35,transparent:true,opacity:.76}));base.rotation.z=Math.PI/2;base.position.x=-.04;scene.add(base);
+const mountRing=new THREE.Mesh(new THREE.TorusGeometry(.085,.004,12,64),new THREE.MeshBasicMaterial({color:0xfbbf24}));mountRing.rotation.y=Math.PI/2;mountRing.position.x=-.002;scene.add(mountRing);
+const baseOrigin=new THREE.Mesh(new THREE.SphereGeometry(.012,24,16),new THREE.MeshStandardMaterial({color:0xfbbf24,emissive:0x7c4a00}));scene.add(baseOrigin);
+const baseAxes=new THREE.AxesHelper(.13);scene.add(baseAxes);
+function makeLabel(text){const c=document.createElement('canvas');c.width=320;c.height=64;const g=c.getContext('2d');g.fillStyle='rgba(15,23,42,.82)';g.fillRect(0,0,c.width,c.height);g.fillStyle='#f8fafc';g.font='26px system-ui';g.fillText(text,16,42);const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));s.scale.set(.28,.056,1);return s}
+const baseLabel=makeLabel('底座参考点 O (0,0,0)');baseLabel.position.set(-.02,.12,.02);scene.add(baseLabel);
+const floorGrid=new THREE.GridHelper(.8,8,0x516078,0x2a374b);floorGrid.position.z=0;scene.add(floorGrid);
+const point=new THREE.Mesh(new THREE.SphereGeometry(.014,28,20),new THREE.MeshStandardMaterial({color:0xf8fafc,roughness:.25,metalness:.05}));scene.add(point);
+const anchor=new THREE.Vector3();
+const link=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),point.position]),new THREE.LineDashedMaterial({color:0x94a3b8,dashSize:.025,gapSize:.015}));link.computeLineDistances();scene.add(link);
+const transform=new TransformControls(camera,renderer.domElement);transform.attach(point);transform.setMode('translate');transform.setSpace('world');transform.setSize(.82);scene.add(transform.getHelper());
+let dragging=false;
+function updateLink(){link.geometry.setFromPoints([new THREE.Vector3(),point.position]);link.computeLineDistances()}
+function clampPoint(){const d=point.position.clone().sub(anchor);if(d.length()>.08)d.setLength(.08);d.set(Math.round(d.x*1000)/1000,Math.round(d.y*1000)/1000,Math.round(d.z*1000)/1000);point.position.copy(anchor).add(d);deltaLabel.textContent=`空间偏移：X ${(d.x*100).toFixed(1)} · Y ${(d.y*100).toFixed(1)} · Z ${(d.z*100).toFixed(1)} cm · 距离 ${(d.length()*100).toFixed(1)} cm`;updateLink()}
+async function syncPose(){try{const r=await window.robotUi.api('/api/pose');const p=r.pose;anchor.set(p.x,p.y,p.z);point.position.copy(anchor);clampPoint()}catch{}}
+transform.addEventListener('mouseDown',()=>{dragging=true});
+transform.addEventListener('objectChange',clampPoint);
+transform.addEventListener('dragging-changed',e=>{orbit.enabled=!e.value});
+transform.addEventListener('mouseUp',async()=>{
+  if(!dragging)return;dragging=false;const p=point.position.clone().sub(anchor);
+  if(!document.getElementById('armed').checked||window.robotUi.busy||p.length()<.002){point.position.copy(anchor);clampPoint();return}
+  window.robotUi.busy=true;transform.enabled=false;
+  const q=new URLSearchParams({dx:p.x,dy:p.y,dz:p.z,speed:document.getElementById('speed').value});
+  try{document.getElementById('log').textContent='三维末端逆解与全臂运动中…';const r=await window.robotUi.api('/api/end-move?'+q,'POST');document.getElementById('log').textContent=r.message}
+  catch(x){document.getElementById('log').textContent='逆解错误：'+x.message}
+  finally{transform.enabled=true;window.robotUi.busy=false;await syncPose();window.robotUi.refresh();window.robotUi.refreshPose()}
+});
+function resize(){const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+new ResizeObserver(resize).observe(host);resize();
+renderer.setAnimationLoop(()=>{orbit.update();renderer.render(scene,camera)});
+syncPose();
+</script>
+</body>
+</html>
