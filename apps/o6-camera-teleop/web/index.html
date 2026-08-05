@@ -78,22 +78,17 @@
                   <button class="mock-detection left-tray" data-agent-object="left-tray" type="button"><span>左侧托盘</span><b>95%</b></button>
                   <div id="agentScenePulse" class="scene-pulse" hidden></div>
                 </div>
-                <dl class="agent-evidence-list">
-                  <div><dt>当前锁定</dt><dd id="agentLockedTarget">尚未选择</dd></div>
-                  <div><dt>目标歧义</dt><dd id="agentAmbiguity">等待指令</dd></div>
-                  <div><dt>工作区安全</dt><dd id="agentWorkspaceSafety" class="success-text">可演示</dd></div>
-                </dl>
-                <div class="agent-object-list" aria-label="Mock 视觉目标">
-                  <button data-agent-object="red-cup" type="button"><i class="object-swatch red"></i>红色杯子</button>
-                  <button data-agent-object="blue-cup" type="button"><i class="object-swatch blue"></i>蓝色杯子</button>
-                  <button data-agent-object="left-tray" type="button"><i class="object-swatch tray"></i>左侧托盘</button>
+                <div id="agentEvidenceSummary" class="agent-evidence-summary" aria-label="视觉证据摘要">
+                  <div><span>目标 / 深度</span><strong id="agentLockedTarget">尚未选择</strong><small id="agentTargetDetail">等待目标</small></div>
+                  <div><span>识别置信度</span><strong id="agentConfidence">--</strong><small id="agentAmbiguity">等待指令</small></div>
+                  <div><span>安全检查</span><strong id="agentWorkspaceSafety" class="success-text">通过</strong><small id="agentSafetyDetail">工作区净空</small></div>
                 </div>
                 <p class="agent-mock-note">本地演示数据 · 不调用视觉模型或机械手动作</p>
               </section>
 
               <section class="panel agent-workspace-panel">
                 <div class="agent-panel-heading agent-workspace-heading">
-                  <div><p>自然语言 Agent</p><h2>任务编排</h2></div>
+                  <div><p>自然语言 Agent</p><h2>任务编排</h2><small id="agentTaskMeta" class="agent-task-meta">新任务 · 支持文字与语音</small></div>
                   <div class="agent-heading-actions">
                     <label class="wake-control" for="agentWakeToggle"><input id="agentWakeToggle" type="checkbox"><span>唤醒词</span></label>
                     <span id="agentPhaseBadge" class="badge simulation">等待任务</span>
@@ -103,6 +98,11 @@
                 <div id="agentConversation" class="agent-conversation" role="log" aria-live="polite">
                   <div class="agent-message assistant"><span>A</span><p>请指定目标和任务，例如“抓住红色杯子，然后放到左侧托盘”。</p></div>
                 </div>
+
+                <section id="agentOutcome" class="agent-outcome" aria-label="任务结果" hidden>
+                  <div><span>任务完成</span><strong id="agentOutcomeTitle">红色杯子已放置</strong></div>
+                  <dl><div><dt>耗时</dt><dd id="agentOutcomeDuration">--</dd></div><div><dt>安全结果</dt><dd id="agentOutcomeSafety">通过</dd></div><div><dt>审计记录</dt><dd id="agentOutcomeAudit">--</dd></div></dl>
+                </section>
 
                 <div id="agentClarification" class="agent-clarification" hidden>
                   <p>请选择要抓取的目标</p>
@@ -114,10 +114,12 @@
                   <ol id="agentPlan" class="agent-plan-list">
                     <li class="empty"><span>—</span><div><strong>等待自然语言任务</strong><small>Agent 会在确认前展示完整计划</small></div></li>
                   </ol>
+                  <div class="agent-progress" aria-label="任务进度"><span id="agentProgressTrack"></span></div>
+                  <div id="agentCurrentStep" class="agent-current-step"><span>待命</span><div><strong>等待任务</strong><small>目标确认后显示当前执行证据</small></div></div>
                   <div class="agent-plan-actions">
-                    <button id="agentConfirmButton" class="button demo" type="button" disabled>确认并演示</button>
-                    <button id="agentLoseTargetButton" class="button secondary" type="button" disabled>模拟目标丢失</button>
-                    <button id="agentCancelButton" class="button secondary danger-outline" type="button" disabled>取消任务</button>
+                    <button id="agentConfirmButton" class="button demo" type="button" hidden disabled>确认执行</button>
+                    <button id="agentLoseTargetButton" class="button secondary" type="button" hidden disabled>模拟目标丢失</button>
+                    <button id="agentCancelButton" class="button secondary danger-outline" type="button" hidden disabled>取消任务</button>
                   </div>
                   <div id="agentRecoveryActions" class="agent-recovery-actions" hidden><button id="agentResumeButton" class="button demo" type="button">重新识别并继续</button><button id="agentRestartButton" class="button secondary" type="button">重新开始</button></div>
                 </section>

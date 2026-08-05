@@ -29,6 +29,30 @@ class AgentDemoUiTest(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.html)
 
+    def test_agent_workspace_uses_focused_task_structure(self):
+        for marker in (
+            'id="agentTaskMeta"',
+            'id="agentEvidenceSummary"',
+            'id="agentProgressTrack"',
+            'id="agentCurrentStep"',
+            'id="agentOutcome"',
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.html)
+        self.assertNotIn('class="agent-object-list"', self.html)
+
+    def test_agent_actions_start_contextually_hidden(self):
+        for control_id in (
+            "agentConfirmButton",
+            "agentLoseTargetButton",
+            "agentCancelButton",
+            "agentRecoveryActions",
+        ):
+            marker = f'id="{control_id}"'
+            start = self.html.index(marker)
+            tag_end = self.html.index(">", start)
+            self.assertIn("hidden", self.html[start:tag_end])
+
     def test_agent_demo_uses_a_local_scene_asset(self):
         self.assertIn('/assets/assets/agent-demo-scene.png', self.html)
         asset = WEB_DIR / "assets" / "agent-demo-scene.png"
