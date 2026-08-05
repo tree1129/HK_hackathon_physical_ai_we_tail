@@ -53,6 +53,8 @@ class FrameSourceManager:
             self.capture = self.capture_factory(self.camera_index)
         ok, bgr = self.capture.read()
         if not ok or bgr is None:
+            self.capture.release()
+            self.capture = None
             return None
         return FrameSample(source, bgr, None)
 

@@ -1282,7 +1282,7 @@ def create_app(runtime) -> Flask:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LinkerHand O6 local visual control console")
-    parser.add_argument("--camera", type=int, default=0, help="OpenCV camera index")
+    parser.add_argument("--camera", type=int, default=1, help="OpenCV camera index")
     parser.add_argument("--config", default="config.yaml", help="YAML configuration path")
     parser.add_argument("--host", default="127.0.0.1", help="HTTP bind address")
     parser.add_argument("--port", type=int, default=8765, help="HTTP port")

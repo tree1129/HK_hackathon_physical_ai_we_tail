@@ -74,6 +74,23 @@ class FrameSourceTest(unittest.TestCase):
         self.assertTrue(capture.released)
         self.assertIsNone(manager.capture)
 
+    def test_mac_camera_reopens_after_a_failed_read(self):
+        failed = FakeCapture()
+        recovered = FakeCapture(np.zeros((2, 3, 3), dtype=np.uint8))
+        captures = iter((failed, recovered))
+        opened = []
+
+        def factory(index):
+            opened.append(index)
+            return next(captures)
+
+        manager = FrameSourceManager(2, FakeReceiver(None), factory)
+
+        self.assertIsNone(manager.read(VisionSource.MAC_CAMERA, now=1.0))
+        self.assertTrue(failed.released)
+        self.assertIsNotNone(manager.read(VisionSource.MAC_CAMERA, now=2.0))
+        self.assertEqual(opened, [2, 2])
+
     def test_atomic_contact_save_preserves_existing_config(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.yaml"
