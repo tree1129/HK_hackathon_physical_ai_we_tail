@@ -230,6 +230,9 @@ details { margin-top: 13px; border-top: 1px solid var(--line); } details summary
 .danger-outline { color: var(--red); border-color: #e1b2ae !important; }
 .agent-workspace-panel[data-phase="completed"] .agent-plan-section { background: #fcfdfd; }
 .agent-workspace-panel[data-phase="completed"] .agent-current-step { border-left-color: var(--green); background: #f4faf6; }
+.agent-workspace-panel[data-phase="completed"] .agent-examples,
+.agent-workspace-panel[data-phase="completed"] .agent-composer,
+.agent-workspace-panel[data-phase="completed"] .agent-voice-status { display: none; }
 .agent-examples { display: flex; flex-wrap: wrap; gap: 6px; padding: 11px 18px 8px; }
 .agent-composer { display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: end; gap: 8px; margin-top: auto; padding: 0 18px; }
 .agent-composer label { min-width: 0; }

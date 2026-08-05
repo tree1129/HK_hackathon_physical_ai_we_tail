@@ -573,6 +573,7 @@
       this.nodes.recoveryActions.hidden = !["paused", "stopped", "completed"].includes(state.phase);
       this.nodes.resumeButton.hidden = state.phase !== "paused";
       this.nodes.restartButton.hidden = !["paused", "stopped", "completed"].includes(state.phase);
+      this.nodes.restartButton.textContent = state.phase === "completed" ? "开始新任务" : "重新开始";
       this.nodes.confirmButton.hidden = state.phase !== "planned";
       this.nodes.loseTargetButton.hidden = state.phase !== "running";
       this.nodes.cancelButton.hidden = !["clarifying", "planned", "running"].includes(state.phase);

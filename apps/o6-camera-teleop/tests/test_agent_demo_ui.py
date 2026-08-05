@@ -119,6 +119,16 @@ class AgentDemoUiTest(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.agent_js)
 
+    def test_completed_state_focuses_on_result_and_restart(self):
+        self.assertIn(
+            'restartButton.textContent = state.phase === "completed" ? "开始新任务" : "重新开始"',
+            self.agent_js,
+        )
+        self.assertIn(
+            '.agent-workspace-panel[data-phase="completed"] .agent-examples',
+            self.css,
+        )
+
     def test_global_emergency_stop_also_stops_the_demo(self):
         app_js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn("agentDemoController?.stop()", app_js)
