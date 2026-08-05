@@ -65,9 +65,76 @@
           </section>
 
           <section class="page" id="page-agent">
-            <div class="workspace-grid">
-              <section class="panel visual-workspace"><div class="workspace-toolbar"><div><p class="section-label purple-text">LIVE PERCEPTION</p><h2 id="agentCameraTitle">物品抓取画面</h2></div><div class="stream-metrics"><span><b id="agentFps">0.0</b> FPS</span><span><b id="agentObjectCount">0</b> 个物品</span></div></div><div id="agentStreams" class="stream-grid single"><figure><figcaption><span>RGB 识别</span><strong id="rgbSourceLabel">Mac 摄像头</strong></figcaption><div class="video-stage"><img id="agentFeed" data-video-feed data-src="/video_feed" alt="物品识别画面"><div class="video-state"><strong id="agentStateLabel">未布防</strong><span id="agentTargetLabel">目标：无</span></div><div id="agentCameraError" class="camera-error" hidden><strong>RGB 画面不可用</strong><span>等待视觉运行层。</span></div></div></figure><figure id="depthPanel" hidden><figcaption><span>深度伪彩</span><strong id="depthDistance">---</strong></figcaption><div class="video-stage depth-stage"><img id="depthFeed" data-depth-feed data-src="/depth_feed" alt="iPhone LiDAR 深度画面"><div id="depthError" class="camera-error" hidden><strong>深度画面不可用</strong><span>等待 iPhone LiDAR 数据流。</span></div></div></figure></div><div class="recognition-strip"><div><span>目标稳定度</span><strong id="agentStableText">0 / 8</strong></div><div class="progress-track"><i id="agentStableProgress"></i></div><div><i id="agentSafetyDot" class="status-dot"></i><strong id="agentSafetyText">等待运行层</strong></div></div></section>
-              <aside class="panel control-panel"><div class="section-heading"><div><p class="section-label purple-text">REAL OBJECT CONTROL</p><h2>物品抓取</h2></div><span class="real-tag">真实接口</span></div><label class="field-label">视觉来源</label><div class="segmented source" role="group" aria-label="视觉来源"><button id="macSourceButton" data-action="source-mac-camera" type="button">Mac 摄像头</button><button id="mobileSourceButton" data-action="source-mobile-camera" type="button">手机相机</button><button id="iphoneSourceButton" data-action="source-iphone-lidar" type="button">iPhone LiDAR</button></div><div id="lidarSummary" class="lidar-summary" hidden><div><span>配对码</span><strong id="pairingCode">------</strong></div><div><span>iPhone</span><strong id="iphoneState">等待连接</strong></div><div><span>深度流</span><strong id="depthStreamState">0.0 FPS</strong></div><div><span>接触面</span><strong id="contactDepth">未标定</strong></div><p id="depthPhase">深度不可用</p><div class="action-grid"><button id="calibrateDepthButton" class="button secondary real-control" data-action="depth-calibrate-contact" type="button">记录 0 cm</button><button id="clearDepthButton" class="button secondary real-control" data-action="depth-clear-calibration" type="button">清除标定</button></div></div><div class="status-grid two"><div><span>抓取目标</span><strong id="agentTarget">无</strong></div><div><span>识别状态</span><strong id="agentGraspState">未布防</strong></div></div><div class="action-grid"><button id="armButton" class="button primary purple real-control" data-action="arm" type="button">布防识别</button><button id="disarmButton" class="button secondary real-control" data-action="disarm" type="button">解除布防</button></div><button class="button secondary full real-control" data-action="open" type="button">安全张开并复位</button><p id="agentEvent" class="event-note">正在初始化</p><div class="demo-divider"><span>Agent 任务编排</span><b class="demo-tag">演示模式</b></div><label class="field-label" for="agentTaskInput">任务描述</label><textarea id="agentTaskInput" rows="3">把桌面上的物品放进指定区域。</textarea><p class="demo-note">仅演示计划流程，不会下发额外硬件指令。</p><ol id="agentPlan" class="plan-list"><li class="current"><span>1</span><div><strong>确认抓取目标</strong><small>读取真实视觉结果</small></div></li><li><span>2</span><div><strong>生成安全计划</strong><small>演示步骤</small></div></li><li><span>3</span><div><strong>等待操作者确认</strong><small>不下发硬件指令</small></div></li><li><span>4</span><div><strong>验证任务结果</strong><small>演示时间线</small></div></li></ol><button id="agentDemoButton" class="button demo full" type="button">预览 Agent 计划</button></aside>
+            <div class="agent-demo-layout">
+              <section class="panel agent-perception-panel">
+                <div class="agent-panel-heading">
+                  <div><p>Mock 视觉</p><h2>目标证据</h2></div>
+                  <span id="agentObjectSummary"><i class="status-dot online"></i>3 个目标</span>
+                </div>
+                <div id="agentMockScene" class="agent-mock-scene">
+                  <img src="/assets/agent-demo-scene.png" alt="桌面上的红色杯子、蓝色杯子和左侧托盘">
+                  <button class="mock-detection red-cup" data-agent-object="red-cup" type="button"><span>红色杯子</span><b>92%</b></button>
+                  <button class="mock-detection blue-cup" data-agent-object="blue-cup" type="button"><span>蓝色杯子</span><b>88%</b></button>
+                  <button class="mock-detection left-tray" data-agent-object="left-tray" type="button"><span>左侧托盘</span><b>95%</b></button>
+                  <div id="agentScenePulse" class="scene-pulse" hidden></div>
+                </div>
+                <dl class="agent-evidence-list">
+                  <div><dt>当前锁定</dt><dd id="agentLockedTarget">尚未选择</dd></div>
+                  <div><dt>目标歧义</dt><dd id="agentAmbiguity">等待指令</dd></div>
+                  <div><dt>工作区安全</dt><dd id="agentWorkspaceSafety" class="success-text">可演示</dd></div>
+                </dl>
+                <div class="agent-object-list" aria-label="Mock 视觉目标">
+                  <button data-agent-object="red-cup" type="button"><i class="object-swatch red"></i>红色杯子</button>
+                  <button data-agent-object="blue-cup" type="button"><i class="object-swatch blue"></i>蓝色杯子</button>
+                  <button data-agent-object="left-tray" type="button"><i class="object-swatch tray"></i>左侧托盘</button>
+                </div>
+                <p class="agent-mock-note">本地演示数据 · 不调用视觉模型或机械手动作</p>
+              </section>
+
+              <section class="panel agent-workspace-panel">
+                <div class="agent-panel-heading agent-workspace-heading">
+                  <div><p>自然语言 Agent</p><h2>任务编排</h2></div>
+                  <div class="agent-heading-actions">
+                    <label class="wake-control" for="agentWakeToggle"><input id="agentWakeToggle" type="checkbox"><span>唤醒词</span></label>
+                    <span id="agentPhaseBadge" class="badge simulation">等待任务</span>
+                  </div>
+                </div>
+
+                <div id="agentConversation" class="agent-conversation" role="log" aria-live="polite">
+                  <div class="agent-message assistant"><span>A</span><p>请指定目标和任务，例如“抓住红色杯子，然后放到左侧托盘”。</p></div>
+                </div>
+
+                <div id="agentClarification" class="agent-clarification" hidden>
+                  <p>请选择要抓取的目标</p>
+                  <div><button data-agent-clarify="red-cup" type="button">红色杯子</button><button data-agent-clarify="blue-cup" type="button">蓝色杯子</button></div>
+                </div>
+
+                <section class="agent-plan-section" aria-labelledby="agentPlanTitle">
+                  <div class="agent-plan-heading"><div><h3 id="agentPlanTitle">执行计划</h3><p id="agentPlanSummary">输入任务后生成步骤</p></div><strong id="agentPlanState">未生成</strong></div>
+                  <ol id="agentPlan" class="agent-plan-list">
+                    <li class="empty"><span>—</span><div><strong>等待自然语言任务</strong><small>Agent 会在确认前展示完整计划</small></div></li>
+                  </ol>
+                  <div class="agent-plan-actions">
+                    <button id="agentConfirmButton" class="button demo" type="button" disabled>确认并演示</button>
+                    <button id="agentLoseTargetButton" class="button secondary" type="button" disabled>模拟目标丢失</button>
+                    <button id="agentCancelButton" class="button secondary danger-outline" type="button" disabled>取消任务</button>
+                  </div>
+                  <div id="agentRecoveryActions" class="agent-recovery-actions" hidden><button id="agentResumeButton" class="button demo" type="button">重新识别并继续</button><button id="agentRestartButton" class="button secondary" type="button">重新开始</button></div>
+                </section>
+
+                <div class="agent-examples" aria-label="示例任务">
+                  <button data-agent-example="抓住红色杯子，然后放到左侧托盘" type="button">红杯 → 左侧托盘</button>
+                  <button data-agent-example="抓住杯子" type="button">演示目标追问</button>
+                  <button id="agentVoiceDemoButton" type="button">播放语音示例</button>
+                </div>
+
+                <form id="agentComposer" class="agent-composer">
+                  <button id="agentMicButton" class="agent-icon-button" type="button" title="开始语音输入" aria-label="开始语音输入">●</button>
+                  <label for="agentTaskInput"><span class="sr-only">任务描述</span><textarea id="agentTaskInput" rows="1" placeholder="输入任务，或说“Tail，抓住红色杯子”"></textarea></label>
+                  <button id="agentSendButton" class="button demo" type="submit">发送</button>
+                </form>
+                <p id="agentVoiceStatus" class="agent-voice-status" role="status">语音待命</p>
+              </section>
             </div>
           </section>
 
@@ -90,6 +157,7 @@
     <div class="mobile-safety-dock"><button id="mobilePrimaryAction" class="mobile-primary" type="button">进入手势控制</button><button id="mobileEmergency" class="mobile-emergency real-control" data-action="stop" type="button">■ 急停</button></div>
     <nav class="mobile-nav" aria-label="移动端导航"><button class="active" data-page-target="home" type="button"><b>⌂</b><small>首页</small></button><button data-page-target="gesture" type="button"><b>H</b><small>手势</small></button><button data-page-target="agent" type="button"><b>A</b><small>Agent</small></button><button data-page-target="devices" type="button"><b>D</b><small>设备</small></button><button data-page-target="history" type="button"><b>R</b><small>记录</small></button><button data-page-target="settings" type="button"><b>S</b><small>设置</small></button></nav>
     <div id="toastRegion" class="toast-region" role="status" aria-live="polite"></div>
+    <script src="/assets/agent_demo.js"></script>
     <script src="/assets/app.js"></script>
   </body>
 </html>
