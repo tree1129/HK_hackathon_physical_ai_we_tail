@@ -2,10 +2,24 @@
   "use strict";
 
   const MOCK_OBJECTS = Object.freeze({
-    "red-cup": Object.freeze({ id: "red-cup", label: "红色杯子", kind: "cup", color: "red" }),
-    "blue-cup": Object.freeze({ id: "blue-cup", label: "蓝色杯子", kind: "cup", color: "blue" }),
-    "left-tray": Object.freeze({ id: "left-tray", label: "左侧托盘", kind: "tray", position: "left" }),
+    "red-cup": Object.freeze({
+      id: "red-cup", label: "红色杯子", kind: "cup", color: "red",
+      confidence: 0.92, depthM: 0.46, center: Object.freeze([0.22, 0.72]),
+      bbox: Object.freeze([0.08, 0.58, 0.26, 0.32]), graspStrategy: "top-pinch",
+    }),
+    "blue-cup": Object.freeze({
+      id: "blue-cup", label: "蓝色杯子", kind: "cup", color: "blue",
+      confidence: 0.88, depthM: 0.51, center: Object.freeze([0.47, 0.69]),
+      bbox: Object.freeze([0.34, 0.55, 0.25, 0.37]), graspStrategy: "side-pinch",
+    }),
+    "left-tray": Object.freeze({
+      id: "left-tray", label: "左侧托盘", kind: "tray", position: "left",
+      confidence: 0.95, depthM: 0.63, center: Object.freeze([0.78, 0.54]),
+      bbox: Object.freeze([0.59, 0.28, 0.37, 0.52]), graspStrategy: "place-center",
+    }),
   });
+
+  let taskSequence = 0;
 
   function isConfirmCommand(text) {
     return /(^|[，,。\s])(确认|确认执行|开始|开始执行)([，,。\s]|$)/i.test(String(text).trim());
@@ -16,7 +30,12 @@
   }
 
   function cloneObject(item) {
-    return item ? { ...item } : null;
+    if (!item) return null;
+    return {
+      ...item,
+      center: item.center ? [...item.center] : undefined,
+      bbox: item.bbox ? [...item.bbox] : undefined,
+    };
   }
 
   function initialState() {
@@ -29,6 +48,10 @@
       candidates: [],
       plan: [],
       currentStep: -1,
+      task: null,
+      events: [],
+      result: null,
+      elapsedMs: 0,
     };
   }
 
@@ -36,6 +59,7 @@
     constructor() {
       this.state = initialState();
       this.pendingDestination = null;
+      this.pendingSource = "text";
     }
 
     snapshot() {
@@ -45,10 +69,13 @@
         destination: cloneObject(this.state.destination),
         candidates: this.state.candidates.map(cloneObject),
         plan: this.state.plan.map((step) => ({ ...step })),
+        task: this.state.task ? { ...this.state.task } : null,
+        events: this.state.events.map((event) => ({ ...event })),
+        result: this.state.result ? { ...this.state.result } : null,
       };
     }
 
-    submit(rawCommand) {
+    submit(rawCommand, source = "text") {
       const command = String(rawCommand || "").trim();
       if (isStopCommand(command)) return this.stop();
       if (isConfirmCommand(command) && this.state.phase === "planned") return this.confirm();
@@ -64,6 +91,7 @@
           : null;
 
       this.pendingDestination = destination;
+      this.pendingSource = source;
       if (mentionsCup && !target) {
         this.state = {
           ...initialState(),
@@ -83,7 +111,7 @@
         };
         return this.snapshot();
       }
-      return this._plan(command, target, destination);
+      return this._plan(command, target, destination, source);
     }
 
     clarify(targetId) {
@@ -96,7 +124,7 @@
           : answer;
       const target = MOCK_OBJECTS[resolvedId];
       if (!target || target.kind !== "cup") return this.snapshot();
-      return this._plan(this.state.command, target, this.pendingDestination || this.state.destination);
+      return this._plan(this.state.command, target, this.pendingDestination || this.state.destination, this.pendingSource);
     }
 
     confirm() {
@@ -109,10 +137,26 @@
     advance() {
       if (this.state.phase !== "running") return this.snapshot();
       this.state.currentStep += 1;
+      const step = this.state.plan[this.state.currentStep];
+      if (step) {
+        this.state.elapsedMs += step.durationMs;
+        this.state.events.push({
+          type: "step.completed",
+          stepId: step.id,
+          elapsedMs: this.state.elapsedMs,
+        });
+      }
       if (this.state.currentStep >= this.state.plan.length - 1) {
         this.state.currentStep = this.state.plan.length - 1;
         this.state.phase = "completed";
         this.state.message = "任务演示已完成。";
+        this.state.result = {
+          status: "completed",
+          elapsedMs: this.state.elapsedMs,
+          targetId: this.state.target.id,
+          destinationId: this.state.destination?.id || null,
+        };
+        this.state.events.push({ type: "task.completed", elapsedMs: this.state.elapsedMs });
       } else {
         this.state.message = this.state.plan[this.state.currentStep].detail;
       }
@@ -141,21 +185,29 @@
 
     reset() {
       this.pendingDestination = null;
+      this.pendingSource = "text";
       this.state = initialState();
       return this.snapshot();
     }
 
-    _plan(command, target, destination) {
+    _plan(command, target, destination, source = "text") {
       const plan = [
-        { id: "locate", title: `定位${target.label}`, detail: "视觉目标已锁定，置信度 92%。" },
-        { id: "grasp", title: "接近并抓取", detail: "工作区检查通过，执行 Mock 抓取。" },
+        { id: "locate", title: `定位${target.label}`, detail: `目标深度 ${target.depthM.toFixed(2)} m，置信度 ${Math.round(target.confidence * 100)}%。`, durationMs: 900 },
+        { id: "grasp", title: "接近并抓取", detail: `安全检查通过，采用 ${target.graspStrategy} 抓取。`, durationMs: 1700 },
       ];
       if (destination) {
         plan.push(
-          { id: "move", title: `移动到${destination.label}`, detail: "保持抓取并移动到目标区域。" },
-          { id: "release", title: "放置并撤离", detail: "释放目标并退出工作区。" },
+          { id: "move", title: `移动到${destination.label}`, detail: `保持目标锁定，移动至 ${destination.depthM.toFixed(2)} m 放置区。`, durationMs: 2100 },
+          { id: "release", title: "放置并撤离", detail: "释放完成，末端退出工作区 120 mm。", durationMs: 1100 },
         );
       }
+      taskSequence += 1;
+      const task = {
+        id: `TASK-${String(taskSequence).padStart(3, "0")}`,
+        source,
+        createdAt: "2026-08-05 14:32:18",
+        safety: "clear",
+      };
       this.state = {
         ...initialState(),
         phase: "planned",
@@ -164,6 +216,8 @@
         target: cloneObject(target),
         destination: cloneObject(destination),
         plan,
+        task,
+        events: [{ type: "task.created", taskId: task.id, elapsedMs: 0 }],
       };
       return this.snapshot();
     }

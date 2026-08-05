@@ -10,7 +10,29 @@ const context = { console, globalThis: {} };
 vm.runInNewContext(source, context);
 
 assert.ok(context.globalThis.AgentDemoCore, "AgentDemoCore export is missing");
-const { AgentDemoMachine, isConfirmCommand, isStopCommand } = context.globalThis.AgentDemoCore;
+const { AgentDemoMachine, MOCK_OBJECTS, isConfirmCommand, isStopCommand } = context.globalThis.AgentDemoCore;
+
+test("exposes realistic deterministic perception evidence", () => {
+  const redCup = MOCK_OBJECTS["red-cup"];
+
+  assert.equal(redCup.confidence, 0.92);
+  assert.equal(redCup.depthM, 0.46);
+  assert.deepEqual(Array.from(redCup.center), [0.22, 0.72]);
+  assert.deepEqual(Array.from(redCup.bbox), [0.08, 0.58, 0.26, 0.32]);
+  assert.equal(redCup.graspStrategy, "top-pinch");
+});
+
+test("creates an auditable task with deterministic timing", () => {
+  const machine = new AgentDemoMachine();
+
+  const state = machine.submit("把红色杯子放到左侧托盘", "voice");
+
+  assert.match(state.task.id, /^TASK-\d{3}$/);
+  assert.equal(state.task.source, "voice");
+  assert.equal(state.task.safety, "clear");
+  assert.equal(state.plan[0].durationMs, 900);
+  assert.equal(state.events[0].type, "task.created");
+});
 
 test("plans a specific multi-step task but waits for confirmation", () => {
   const machine = new AgentDemoMachine();
