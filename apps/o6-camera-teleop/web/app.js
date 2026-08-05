@@ -60,7 +60,7 @@ const HISTORY = {
   lost: ["目标丢失安全停止", "昨天 18:05 · 安全事件 · 自动停止", "物品抓取", "目标丢失后停止"],
 };
 
-const state = { page: "home", online: false, status: null, lastEvent: "", demoStep: 0, demoTimer: null };
+const state = { page: "home", online: false, status: null, lastEvent: "" };
 const mobileCamera = { stream: null, active: false, facingMode: "environment", timer: null };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -163,20 +163,8 @@ function updateMobilePrimary() {
   }
   if (state.page === "agent") {
     button.classList.add("agent");
-    if (status.mode !== "object-grasp") {
-      button.textContent = "切换至物品模式";
-      button.dataset.action = "mode-object";
-    } else if (status.state === "ARMED") {
-      button.textContent = "解除布防";
-      button.dataset.action = "disarm";
-    } else if (["CLOSING", "HOLDING"].includes(status.state)) {
-      button.textContent = "安全张开";
-      button.dataset.action = "open";
-    } else {
-      button.textContent = "布防识别";
-      button.dataset.action = "arm";
-    }
-    button.disabled = !state.online || Boolean(status.emergency_stopped);
+    button.textContent = "播放语音示例";
+    button.disabled = false;
   }
   if (state.page === "devices") { button.classList.add("neutral"); button.textContent = "刷新设备状态"; }
   if (state.page === "history") { button.classList.add("neutral"); button.textContent = "查看最近记录"; }
@@ -284,6 +272,7 @@ function renderGesture(status) {
 }
 
 function renderAgent(status) {
+  if (!$("#agentStreams")) return;
   const objectMode = status.mode === "object-grasp";
   const lidar = status.vision_source === "iphone-lidar";
   const mobileSource = status.vision_source === "mobile-camera";
@@ -512,32 +501,10 @@ function renderChannels() {
   }
 }
 
-function runAgentDemo() {
-  window.clearInterval(state.demoTimer);
-  if (state.demoStep >= 3) state.demoStep = 0;
-  const button = $("#agentDemoButton");
-  button.textContent = "演示计划进行中";
-  const update = () => {
-    $$("#agentPlan li").forEach((item, index) => {
-      item.classList.toggle("done", index < state.demoStep);
-      item.classList.toggle("current", index === state.demoStep);
-      $("span", item).textContent = index < state.demoStep ? "✓" : String(index + 1);
-    });
-    if (state.demoStep >= 3) {
-      window.clearInterval(state.demoTimer);
-      button.textContent = "重新预览 Agent 计划";
-      showToast("Agent 演示完成", "没有向硬件发送额外指令。");
-      return;
-    }
-    state.demoStep += 1;
-  };
-  update();
-  state.demoTimer = window.setInterval(update, 900);
-}
-
 $$('[data-page-target]').forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageTarget)));
 $$('[data-action]').forEach((button) => button.addEventListener("click", () => {
   const action = button.dataset.action;
+  if (action === "stop") globalThis.agentDemoController?.stop();
   if (action === "stop" && state.status?.emergency_stopped) return showToast("急停保持锁定", "请重启运行器解除，前端不会绕过安全锁。", "danger");
   if (action === "source-mobile-camera" && !mobileCamera.active) return startMobileCamera(button);
   if ((action === "source-mac-camera" || action === "source-iphone-lidar") && mobileCamera.active) stopMobileTracks();
@@ -557,15 +524,15 @@ $("#mobilePrimaryAction").addEventListener("click", () => {
   if (state.page === "devices") return refreshStatus();
   if (state.page === "history") return $(".history-item.active")?.scrollIntoView({ block: "center", behavior: "smooth" });
   if (state.page === "settings") return $("#saveSettings").click();
+  if (state.page === "agent") return globalThis.agentDemoController?.triggerVoiceDemo();
 });
 $("#refreshDevices").addEventListener("click", async (event) => { event.currentTarget.textContent = "刷新中…"; await refreshStatus(); event.currentTarget.textContent = "刷新状态"; showToast("设备状态已刷新", state.online ? "真实运行状态已更新。" : "运行层仍处于离线状态。", state.online ? "success" : "warning"); });
-$("#agentDemoButton").addEventListener("click", runAgentDemo);
 $$('.history-item').forEach((button) => button.addEventListener("click", () => { $$(".history-item").forEach((item) => item.classList.toggle("active", item === button)); const item = HISTORY[button.dataset.history]; setText("#historyTitle", item[0]); setText("#historyMeta", item[1]); setText("#historyMode", item[2]); setText("#historySafety", item[3]); }));
 $$('[data-settings-tab]').forEach((button) => button.addEventListener("click", () => { $$('[data-settings-tab]').forEach((item) => item.classList.toggle("active", item === button)); showToast("设置分类", `${button.textContent}选项为演示界面。`); }));
 $$('[data-interface-mode]').forEach((button) => button.addEventListener("click", () => { document.body.classList.toggle("expert-mode", button.dataset.interfaceMode === "expert"); $$('[data-interface-mode]').forEach((item) => item.classList.toggle("selected", item === button)); }));
 $("#saveSettings").addEventListener("click", () => { setText("#settingsSaveStatus", "本次会话的演示设置已保存"); showToast("演示设置已保存", "未修改运行层配置或硬件参数。"); });
 $$('[data-video-feed]').forEach((image) => image.addEventListener("error", () => { $(image.id === "gestureFeed" ? "#gestureCameraError" : "#agentCameraError").hidden = false; }));
-$("#depthFeed").addEventListener("error", () => { if (state.page === "agent") $("#depthError").hidden = false; });
+$("#depthFeed")?.addEventListener("error", () => { if (state.page === "agent") $("#depthError").hidden = false; });
 
 renderChannels();
 updateFeeds();

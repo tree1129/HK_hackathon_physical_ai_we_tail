@@ -33,11 +33,11 @@ test("asks for clarification when a cup is ambiguous", () => {
   assert.deepEqual(Array.from(state.candidates, (item) => item.id), ["red-cup", "blue-cup"]);
 });
 
-test("clarification selects one target and creates a plan", () => {
+test("spoken clarification selects one target and creates a plan", () => {
   const machine = new AgentDemoMachine();
   machine.submit("把杯子放到左边托盘");
 
-  const state = machine.clarify("red-cup");
+  const state = machine.clarify("红色的");
 
   assert.equal(state.phase, "planned");
   assert.equal(state.target.id, "red-cup");
@@ -96,6 +96,37 @@ test("recognizes voice confirmation and stop phrases", () => {
   assert.equal(isConfirmCommand("开始"), true);
   assert.equal(isStopCommand("Tail，急停"), true);
   assert.equal(isStopCommand("取消任务"), true);
+});
+
+test("routes a spoken confirmation through the active plan", () => {
+  const machine = new AgentDemoMachine();
+  machine.submit("把红色杯子放到左侧托盘");
+
+  const state = machine.submit("确认执行");
+
+  assert.equal(state.phase, "running");
+  assert.equal(state.currentStep, -1);
+});
+
+test("routes a spoken stop before any other intent", () => {
+  const machine = new AgentDemoMachine();
+  machine.submit("把红色杯子放到左侧托盘");
+  machine.confirm();
+
+  const state = machine.submit("Tail，停止执行");
+
+  assert.equal(state.phase, "stopped");
+});
+
+test("ignores repeated confirmation while already running", () => {
+  const machine = new AgentDemoMachine();
+  machine.submit("把红色杯子放到左侧托盘");
+  machine.confirm();
+
+  const state = machine.confirm();
+
+  assert.equal(state.phase, "running");
+  assert.equal(state.currentStep, -1);
 });
 
 test("rejects commands outside the demo vocabulary", () => {

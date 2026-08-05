@@ -65,6 +65,23 @@ class AgentDemoUiTest(unittest.TestCase):
             self.assertNotIn("real-control", self.html[tag_start:tag_end])
             self.assertNotIn("data-action", self.html[tag_start:tag_end])
 
+    def test_agent_controller_supports_browser_speech_and_mock_fallback(self):
+        for marker in (
+            "SpeechRecognition",
+            "webkitSpeechRecognition",
+            "agentDemoController",
+            "triggerVoiceDemo",
+            "startWakeMode",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.agent_js)
+
+    def test_global_emergency_stop_also_stops_the_demo(self):
+        app_js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("agentDemoController?.stop()", app_js)
+        self.assertNotIn("function runAgentDemo()", app_js)
+        self.assertNotIn('$("#agentDemoButton")', app_js)
+
 
 if __name__ == "__main__":
     unittest.main()
