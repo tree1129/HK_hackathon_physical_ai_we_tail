@@ -75,6 +75,13 @@ class AgentDemoUiTest(unittest.TestCase):
         self.assertIn("aspect-ratio: 16 / 9", self.css)
         self.assertIn("min-height: 44px", self.css)
 
+    def test_agent_layout_uses_task_first_density(self):
+        self.assertIn("minmax(250px, .48fr) minmax(520px, 1fr)", self.css)
+        self.assertIn(".agent-evidence-summary", self.css)
+        self.assertIn(".agent-current-step", self.css)
+        self.assertIn('.agent-workspace-panel[data-phase="completed"]', self.css)
+        self.assertIn('grid-template-areas: "workspace" "perception"', self.css)
+
     def test_agent_controls_are_separate_from_real_actions(self):
         for control_id in (
             "agentMicButton",
