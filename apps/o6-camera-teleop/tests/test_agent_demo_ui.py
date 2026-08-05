@@ -30,7 +30,7 @@ class AgentDemoUiTest(unittest.TestCase):
                 self.assertIn(marker, self.html)
 
     def test_agent_demo_uses_a_local_scene_asset(self):
-        self.assertIn('/assets/agent-demo-scene.png', self.html)
+        self.assertIn('/assets/assets/agent-demo-scene.png', self.html)
         asset = WEB_DIR / "assets" / "agent-demo-scene.png"
         self.assertTrue(asset.is_file())
         self.assertGreater(asset.stat().st_size, 10_000)

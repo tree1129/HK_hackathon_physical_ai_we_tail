@@ -317,7 +317,7 @@ class MapperAndFilterTest(unittest.TestCase):
             self.assertIn(f'id="page-{page}"', html)
         self.assertIn('class="mobile-safety-dock"', html)
         self.assertIn('data-src="/video_feed"', html)
-        self.assertIn('src="/assets/agent-demo-scene.png"', html)
+        self.assertIn('src="/assets/assets/agent-demo-scene.png"', html)
         self.assertIn('src="/assets/agent_demo.js"', html)
         self.assertIn('data-action="fist"', html)
         self.assertIn("一键握拳", html)
