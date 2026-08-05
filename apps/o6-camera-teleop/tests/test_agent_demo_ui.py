@@ -100,6 +100,18 @@ class AgentDemoUiTest(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.agent_js)
 
+    def test_agent_controller_renders_compact_contextual_states(self):
+        for marker in (
+            "_trimConversation",
+            "_renderOutcome",
+            "workspace.dataset.phase",
+            "progressTrack.style.width",
+            "confirmButton.hidden",
+            "loseTargetButton.hidden",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.agent_js)
+
     def test_global_emergency_stop_also_stops_the_demo(self):
         app_js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn("agentDemoController?.stop()", app_js)

@@ -131,6 +131,7 @@
       if (this.state.phase !== "planned") return this.snapshot();
       this.state.phase = "running";
       this.state.message = "计划已确认，开始演示。";
+      this.state.events.push({ type: "plan.confirmed", elapsedMs: this.state.elapsedMs });
       return this.snapshot();
     }
 
@@ -167,6 +168,7 @@
       if (this.state.phase !== "running") return this.snapshot();
       this.state.phase = "paused";
       this.state.message = "目标暂时丢失，演示已暂停。";
+      this.state.events.push({ type: "target.lost", elapsedMs: this.state.elapsedMs });
       return this.snapshot();
     }
 
@@ -174,6 +176,7 @@
       if (this.state.phase !== "paused") return this.snapshot();
       this.state.phase = "running";
       this.state.message = "目标已重新识别，继续当前步骤。";
+      this.state.events.push({ type: "target.reacquired", elapsedMs: this.state.elapsedMs });
       return this.snapshot();
     }
 
@@ -260,12 +263,14 @@
     _collectNodes() {
       const byId = (id) => this.document.getElementById(id);
       return {
+        workspace: this.document.querySelector(".agent-workspace-panel"),
         conversation: byId("agentConversation"),
         clarification: byId("agentClarification"),
         plan: byId("agentPlan"),
         planSummary: byId("agentPlanSummary"),
         planState: byId("agentPlanState"),
         phaseBadge: byId("agentPhaseBadge"),
+        taskMeta: byId("agentTaskMeta"),
         taskInput: byId("agentTaskInput"),
         composer: byId("agentComposer"),
         micButton: byId("agentMicButton"),
@@ -279,8 +284,18 @@
         voiceDemoButton: byId("agentVoiceDemoButton"),
         voiceStatus: byId("agentVoiceStatus"),
         lockedTarget: byId("agentLockedTarget"),
+        targetDetail: byId("agentTargetDetail"),
+        confidence: byId("agentConfidence"),
         ambiguity: byId("agentAmbiguity"),
         workspaceSafety: byId("agentWorkspaceSafety"),
+        safetyDetail: byId("agentSafetyDetail"),
+        progressTrack: byId("agentProgressTrack"),
+        currentStep: byId("agentCurrentStep"),
+        outcome: byId("agentOutcome"),
+        outcomeTitle: byId("agentOutcomeTitle"),
+        outcomeDuration: byId("agentOutcomeDuration"),
+        outcomeSafety: byId("agentOutcomeSafety"),
+        outcomeAudit: byId("agentOutcomeAudit"),
         scenePulse: byId("agentScenePulse"),
       };
     }
@@ -329,7 +344,7 @@
       this._appendMessage("user", text, source === "voice" ? "V" : "你");
       let state;
       if (this.machine.state.phase === "clarifying" && /(红|蓝|red|blue)/i.test(text)) state = this.machine.clarify(text);
-      else state = this.machine.submit(this._stripWakeWord(text));
+      else state = this.machine.submit(this._stripWakeWord(text), source === "example" ? "quick" : source);
       this.nodes.taskInput.value = "";
       this.render(state);
       this._appendMessage("assistant", state.message, "A");
@@ -485,8 +500,6 @@
       const tick = () => {
         const state = this.machine.advance();
         this.render(state);
-        const step = state.plan[state.currentStep];
-        if (step) this._appendMessage("assistant", `${step.title}：${step.detail}`, "A");
         if (state.phase === "completed") {
           this._clearRunTimer();
           this._appendMessage("assistant", "任务完成，Mock 审计记录已生成。", "A");
@@ -516,7 +529,15 @@
       body.textContent = text;
       message.append(icon, body);
       this.nodes.conversation.append(message);
+      this._trimConversation();
       this.nodes.conversation.scrollTop = this.nodes.conversation.scrollHeight;
+    }
+
+    _trimConversation() {
+      if (!this.nodes.conversation) return;
+      while (this.nodes.conversation.children.length > 2) {
+        this.nodes.conversation.firstElementChild.remove();
+      }
     }
 
     _setListening(active, status) {
@@ -532,20 +553,36 @@
     render(state) {
       if (!this.nodes.phaseBadge) return;
       const [phaseLabel, phaseTone] = PHASE_META[state.phase] || PHASE_META.idle;
+      this.nodes.workspace.dataset.phase = state.phase;
       this.nodes.phaseBadge.textContent = phaseLabel;
       this.nodes.phaseBadge.className = `badge ${phaseTone}`;
       this.nodes.lockedTarget.textContent = state.target?.label || "尚未选择";
+      this.nodes.targetDetail.textContent = state.target
+        ? `${state.target.depthM.toFixed(2)} m · (${Math.round(state.target.center[0] * 100)}, ${Math.round(state.target.center[1] * 100)})`
+        : "等待目标";
+      this.nodes.confidence.textContent = state.target ? `${Math.round(state.target.confidence * 100)}%` : "--";
       this.nodes.ambiguity.textContent = state.phase === "clarifying" ? `${state.candidates.length} 个候选` : (state.target ? "唯一候选" : "等待指令");
-      this.nodes.workspaceSafety.textContent = state.phase === "stopped" ? "任务已锁定" : (state.phase === "paused" ? "演示已暂停" : "可演示");
+      this.nodes.workspaceSafety.textContent = state.phase === "stopped" ? "已锁定" : (state.phase === "paused" ? "已暂停" : "通过");
+      this.nodes.safetyDetail.textContent = state.phase === "paused" ? "等待重新识别" : (state.task ? "净空 120 mm" : "工作区净空");
       this.nodes.workspaceSafety.className = state.phase === "stopped" ? "" : "success-text";
+      const sourceLabels = { text: "文字", voice: "语音", quick: "快捷指令" };
+      this.nodes.taskMeta.textContent = state.task
+        ? `${state.task.id} · ${sourceLabels[state.task.source] || "文字"} · ${state.task.createdAt.split(" ")[1]}`
+        : "新任务 · 支持文字与语音";
       this.nodes.clarification.hidden = state.phase !== "clarifying";
       this.nodes.recoveryActions.hidden = !["paused", "stopped", "completed"].includes(state.phase);
+      this.nodes.resumeButton.hidden = state.phase !== "paused";
+      this.nodes.restartButton.hidden = !["paused", "stopped", "completed"].includes(state.phase);
+      this.nodes.confirmButton.hidden = state.phase !== "planned";
+      this.nodes.loseTargetButton.hidden = state.phase !== "running";
+      this.nodes.cancelButton.hidden = !["clarifying", "planned", "running"].includes(state.phase);
       this.nodes.confirmButton.disabled = state.phase !== "planned";
       this.nodes.loseTargetButton.disabled = state.phase !== "running";
       this.nodes.cancelButton.disabled = ["idle", "stopped", "completed"].includes(state.phase);
       this.nodes.scenePulse.hidden = state.phase !== "running";
       this._renderDetections(state);
       this._renderPlan(state);
+      this._renderOutcome(state);
     }
 
     _renderDetections(state) {
@@ -566,6 +603,8 @@
         this.nodes.plan.append(empty);
         this.nodes.planSummary.textContent = "输入任务后生成步骤";
         this.nodes.planState.textContent = "未生成";
+        this.nodes.progressTrack.style.width = "0%";
+        this._renderCurrentStep(null, state.phase);
         return;
       }
       state.plan.forEach((step, index) => {
@@ -591,6 +630,38 @@
         : state.phase === "running"
           ? `${state.currentStep + 1} / ${state.plan.length}`
           : PHASE_META[state.phase][0];
+      const completeCount = state.phase === "completed" ? state.plan.length : Math.max(0, state.currentStep + 1);
+      this.nodes.progressTrack.style.width = `${Math.round((completeCount / state.plan.length) * 100)}%`;
+      const activeIndex = state.phase === "planned" ? 0 : Math.max(0, state.currentStep);
+      this._renderCurrentStep(state.plan[activeIndex], state.phase);
+    }
+
+    _renderCurrentStep(step, phase) {
+      const labels = {
+        idle: "待命", clarifying: "待确认", planned: "下一步", running: "执行中",
+        paused: "已暂停", completed: "已完成", stopped: "已停止",
+      };
+      this.nodes.currentStep.innerHTML = "";
+      const phaseLabel = this.document.createElement("span");
+      const detail = this.document.createElement("div");
+      const title = this.document.createElement("strong");
+      const description = this.document.createElement("small");
+      phaseLabel.textContent = labels[phase] || "待命";
+      title.textContent = step?.title || "等待任务";
+      description.textContent = step?.detail || "目标确认后显示当前执行证据";
+      detail.append(title, description);
+      this.nodes.currentStep.append(phaseLabel, detail);
+    }
+
+    _renderOutcome(state) {
+      const completed = state.phase === "completed" && state.result;
+      this.nodes.outcome.hidden = !completed;
+      this.nodes.conversation.hidden = Boolean(completed);
+      if (!completed) return;
+      this.nodes.outcomeTitle.textContent = `${state.target.label}已放置到${state.destination?.label || "目标区域"}`;
+      this.nodes.outcomeDuration.textContent = `${(state.result.elapsedMs / 1000).toFixed(1)} 秒`;
+      this.nodes.outcomeSafety.textContent = state.task.safety === "clear" ? "通过" : "需复核";
+      this.nodes.outcomeAudit.textContent = `${state.task.id}-AUDIT`;
     }
   }
 

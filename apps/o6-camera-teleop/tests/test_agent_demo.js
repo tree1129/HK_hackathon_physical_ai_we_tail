@@ -102,6 +102,34 @@ test("pauses on target loss and resumes the same plan", () => {
   assert.equal(state.currentStep, 0);
 });
 
+test("records target loss and recovery without discarding progress", () => {
+  const machine = new AgentDemoMachine();
+  machine.submit("把红色杯子放到左侧托盘");
+  machine.confirm();
+  machine.advance();
+
+  const paused = machine.loseTarget();
+  const resumed = machine.resume();
+
+  assert.equal(paused.elapsedMs, 900);
+  assert.equal(paused.events[paused.events.length - 1].type, "target.lost");
+  assert.equal(resumed.currentStep, 0);
+  assert.equal(resumed.events[resumed.events.length - 1].type, "target.reacquired");
+});
+
+test("completion produces a concise audit result", () => {
+  const machine = new AgentDemoMachine();
+  machine.submit("把红色杯子放到左侧托盘");
+  machine.confirm();
+  for (let index = 0; index < 4; index += 1) machine.advance();
+
+  const state = machine.snapshot();
+
+  assert.equal(state.result.status, "completed");
+  assert.equal(state.result.elapsedMs, 5800);
+  assert.equal(state.events[state.events.length - 1].type, "task.completed");
+});
+
 test("stop terminates the current task immediately", () => {
   const machine = new AgentDemoMachine();
   machine.submit("把红色杯子放到左侧托盘");
