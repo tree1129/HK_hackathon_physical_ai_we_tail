@@ -62,8 +62,17 @@ const HISTORY = {
 
 const state = { page: "home", online: false, status: null, lastEvent: "" };
 const mobileCamera = { stream: null, active: false, facingMode: "environment", timer: null };
+const mobileCameraClient = navigator.maxTouchPoints > 0 && window.matchMedia("(pointer: coarse)").matches;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+function configureGestureCameraControls() {
+  const mobileSourceButton = $("#gestureMobileSourceButton");
+  const mobileControls = $("#mobileCameraControls");
+  mobileSourceButton.hidden = !mobileCameraClient;
+  mobileControls.hidden = !mobileCameraClient;
+  $("#gestureSourceSelector").classList.toggle("single", !mobileCameraClient);
+}
 
 function setText(selector, value) {
   const node = $(selector);
@@ -535,6 +544,7 @@ $$('[data-video-feed]').forEach((image) => image.addEventListener("error", () =>
 $("#depthFeed")?.addEventListener("error", () => { if (state.page === "agent") $("#depthError").hidden = false; });
 
 renderChannels();
+configureGestureCameraControls();
 updateFeeds();
 updateMobilePrimary();
 refreshStatus();
