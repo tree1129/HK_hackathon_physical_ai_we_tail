@@ -1,0 +1,56 @@
+[
+  {
+    "id": "codex_target_cache",
+    "type": "function",
+    "z": "4faa963833a046c7",
+    "name": "Cache latest detection",
+    "func": "flow.set('codex_latest_detection', msg.payload); return null;",
+    "outputs": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 760,
+    "y": 700,
+    "wires": []
+  },
+  {
+    "id": "codex_target_http",
+    "type": "http in",
+    "z": "4faa963833a046c7",
+    "name": "Latest detection API",
+    "url": "/api/latest-detection",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 230,
+    "y": 760,
+    "wires": [["codex_target_reply"]]
+  },
+  {
+    "id": "codex_target_reply",
+    "type": "function",
+    "z": "4faa963833a046c7",
+    "name": "Return latest detection",
+    "func": "msg.headers={'content-type':'application/json','cache-control':'no-store'}; msg.payload=flow.get('codex_latest_detection') || {code:1,data:{labels:[],boxes:[],resolution:[1280,720]}}; return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 500,
+    "y": 760,
+    "wires": [["codex_target_response"]]
+  },
+  {
+    "id": "codex_target_response",
+    "type": "http response",
+    "z": "4faa963833a046c7",
+    "name": "Detection response",
+    "statusCode": "",
+    "headers": {},
+    "x": 760,
+    "y": 760,
+    "wires": []
+  }
+]

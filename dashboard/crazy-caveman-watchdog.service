@@ -1,0 +1,14 @@
+[Unit]
+Description=Crazy Caveman USB-CAN serial watchdog
+After=network.target
+
+[Service]
+Type=simple
+User=mememe
+WorkingDirectory=/home/mememe/ArmApi
+ExecStart=/home/mememe/ArmApi/dashboard/serial_watchdog.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

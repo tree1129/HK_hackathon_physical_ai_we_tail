@@ -1,0 +1,23 @@
+# Runtime state and logs
+*.log
+*.pid
+trajectory_library/
+recording.dat
+
+# Local credentials and environments
+.env
+.env.*
+!.env.example
+auth.json
+config.toml
+.venv/
+__pycache__/
+*.py[cod]
+
+# Build outputs
+dashboard/a1r_teaching_server
+dashboard/a1r_dashboard_server
+
+# Editor and OS files
+.DS_Store
+~$*
