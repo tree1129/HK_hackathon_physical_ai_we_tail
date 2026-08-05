@@ -17,6 +17,7 @@ reCamera 与 LinkerHand 的视觉感知、动作示教、语音控制和物品�
 
 - `dashboard/`：机械臂控制服务、可视化界面、视觉服务和运维脚本
 - `voice-control/`：离线语音识别与动作触发服务
+- `board-tools/`：从 K3 板实际导出的机械臂状态与动作调试源码
 
 详细部署方式见 [`dashboard/README.md`](dashboard/README.md)。
 
